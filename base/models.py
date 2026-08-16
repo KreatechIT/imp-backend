@@ -119,5 +119,5 @@ class UserModel(AbstractBaseUser):
         return getattr(self, "admin", None)
 
     @property
-    def is_influencer(self):
-        return getattr(self, "influencer", None)
+    def is_member(self):
+        return getattr(self, "member", None)

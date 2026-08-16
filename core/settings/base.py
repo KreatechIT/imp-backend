@@ -36,6 +36,9 @@ INSTALLED_APPS = [
     "core",
     "base",
 
+    "apps.admins",
+    "apps.members",
+
     "drf_spectacular",
     "drf_spectacular_sidecar",
 ]
