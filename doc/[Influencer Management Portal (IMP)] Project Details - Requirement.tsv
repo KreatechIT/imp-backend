@@ -1,0 +1,23 @@
+Link	https://drive.google.com/drive/folders/14KIvPfoWQE3GMvHUn8w34igWzbwPTy0W?usp=sharing			
+Link to login		https://influencerhubmy.com/submit/d984e1e6016d43cb85d85da80100c016		
+Password		eliska462		
+Note: Make sure not to do any actions				
+				
+No	Type	Features	Description	Remark
+1	General	UI/UX General	Dark / Light / Follow System Current Date time (GMT+8)	
+2	Feature	Multi language	Option 1 : English (EN) Option 2 : Bahasa Melayu (BM)	
+3	Page	Login	Username / Password Forget Password: Contact Admin	Make sure all basic validation is there
+4	Page	Profile	- Profile Picture - Display Name - Username - Change Password - Audit Log (Last login) - Bank Details	
+5	Page	Home	Banner - CMS Salary - Calculation (Follow Admin set) Deduction Transaction - Calculation (Follow Admin set) Event Banner - CMS Post of the Day - CMS	
+6	Page	Mission Today	Bio Link (Affiliate link) Bio Link (Telegram group link) Info Card Task Card Platform (Instagram / Tiktok)	
+7	Page	Earning	Info Card (TnC) Monthly Earning Missed Count Posted Count	
+8	Page	Missed	Date  Monthly Missed Count  Total Amount	
+9	Page	Rules	Info Card - CMS (WYSIWYG editor)	
+10	Page	Leaderboard	Ranking Register  Join  Total deposit  Prize  Progress status  Progress Bar	Update hourly Reset every month  Algorithm (After decide let you know)  Register & Conversion & Total Deposit pull from 3rd party API (MRS)
+11	Page	Game Lobby	Everyone can go in, select avatar and chit chat together	Quote Separately
+12	Page	Marketing Tools	Frame editor 1. We can upload frame and let user to select and place on their video or photo	Quote Separately
+13	Server	Server hosting	Server fees	
+				
+	Note			
+1	 Photo (TT)	1. Here are the reference website, can follow it the features but design not 2. Login details can ask Kelvin to provide, but just can view inside pages but not to edit and delete anything inside		
+2	IG / Tiktok 	Views Submission from Influencer  Note: - Need to pull automatically from TikTok / Instagram, and the leaderboard updates live. (Need to pull their views) - User keep TikTok / Instagram accounts public		

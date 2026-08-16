@@ -1,0 +1,10 @@
+[flake8]
+max-line-length = 100
+exclude = .git, __pycache__, migrations, venv, settings, */__init__.py, env
+per-file-ignores =
+    */urls.py: E501
+    */routers.py: E501
+    */apps.py: F401
+    */functions.py: E501
+    */commands/*: F401
+ignore = E203, W503
