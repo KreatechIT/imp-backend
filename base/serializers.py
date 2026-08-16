@@ -6,8 +6,7 @@ from rest_framework.fields import SkipField
 
 
 class CustomImageSerializer(serializers.ImageField):
-    """Accepts a new upload, or skips the field when the existing URL string is
-    resubmitted unchanged."""
+    """Skips the field when the existing url string is resubmitted unchanged."""
 
     def to_internal_value(self, data):
         if isinstance(data, str):
@@ -19,8 +18,6 @@ class CustomImageSerializer(serializers.ImageField):
 
 
 class SanitizedHTMLField(serializers.CharField):
-    """CharField for WYSIWYG content, stripped of anything not allow-listed."""
-
     def __init__(self, *args, **kwargs):
         self.allowed_tags = kwargs.pop('allowed_tags', [
             'p', 'b', 'i', 'u', 'ul', 'ol', 'li', 'br', 'strong', 'em',

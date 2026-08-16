@@ -6,7 +6,9 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from sorl.thumbnail import ImageField
 
+from apps.admins.models import Admin
 from apps.jobs import choices
+from apps.members.models import Member
 from base.models import TimeStampedModel
 from core import encryption
 
@@ -14,6 +16,11 @@ from core import encryption
 def company_upload_to(instance, filename):
     ext = os.path.splitext(filename)[1].lower()
     return f"company/{uuid4().hex}{ext}"
+
+
+def proof_upload_to(instance, filename):
+    ext = os.path.splitext(filename)[1].lower()
+    return f"proof/{uuid4().hex}{ext}"
 
 
 class JobSettings(TimeStampedModel):
@@ -206,3 +213,164 @@ class JobRequirement(TimeStampedModel):
     @property
     def is_archived(self):
         return self.archived is not None
+
+
+class MemberJob(TimeStampedModel):
+    member = models.ForeignKey(
+        Member,
+        verbose_name=_("Member"),
+        on_delete=models.CASCADE,
+        related_name="member_jobs",
+    )
+    job = models.ForeignKey(
+        Job,
+        verbose_name=_("Job"),
+        on_delete=models.CASCADE,
+        related_name="member_jobs",
+    )
+    status = models.IntegerField(
+        verbose_name=_("Status"),
+        choices=choices.MEMBER_JOB_STATUS_CHOICES,
+        default=1,
+    )
+    affiliate_link = models.URLField(
+        verbose_name=_("Affiliate Link"),
+        max_length=500,
+        blank=True,
+        null=True,
+    )
+    affiliate_link_status = models.IntegerField(
+        verbose_name=_("Affiliate Link Status"),
+        choices=choices.AFFILIATE_LINK_STATUS_CHOICES,
+        default=1,
+    )
+    joined = models.DateField(blank=True, null=True)
+    completed = models.DateField(blank=True, null=True)
+    archived = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["member", "job"],
+                condition=models.Q(archived__isnull=True),
+                name="unique_active_member_job",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["created"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.member} - {self.job}"
+
+    def archive(self):
+        self.archived = timezone.now()
+        self.save()
+
+    @property
+    def is_archived(self):
+        return self.archived is not None
+
+    @property
+    def is_active(self):
+        return self.status == 2 and self.archived is None
+
+
+class MemberTask(TimeStampedModel):
+    member_job = models.ForeignKey(
+        MemberJob,
+        verbose_name=_("Member Job"),
+        on_delete=models.CASCADE,
+        related_name="tasks",
+    )
+    requirement = models.ForeignKey(
+        JobRequirement,
+        verbose_name=_("Requirement"),
+        on_delete=models.CASCADE,
+        related_name="tasks",
+    )
+    period_key = models.CharField(
+        verbose_name=_("Period Key"),
+        max_length=20,
+    )
+    period_start = models.DateField(verbose_name=_("Period Start"))
+    period_end = models.DateField(verbose_name=_("Period End"))
+
+    submitted_at = models.DateTimeField(blank=True, null=True)
+    proof_link = models.URLField(max_length=500, blank=True, null=True)
+    proof_file = models.FileField(
+        blank=True,
+        null=True,
+        upload_to=proof_upload_to,
+        validators=[encryption.validate_file_size],
+    )
+    note = models.TextField(blank=True, null=True)
+
+    reviewed_at = models.DateTimeField(blank=True, null=True)
+    is_approved = models.BooleanField(blank=True, null=True)
+    reject_reason = models.TextField(blank=True, null=True)
+    reviewed_by = models.ForeignKey(
+        Admin,
+        verbose_name=_("Reviewed By"),
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_tasks",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["member_job", "requirement", "period_key"],
+                name="unique_task_per_period",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["created"]),
+            models.Index(fields=["period_key"]),
+            models.Index(fields=["period_end"]),
+            models.Index(fields=["submitted_at"]),
+            models.Index(fields=["reviewed_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.requirement} - {self.period_key}"
+
+    @property
+    def status(self):
+        if self.reviewed_at:
+            return 3 if self.is_approved else 4
+        if self.submitted_at:
+            return 2
+        if self.period_end < timezone.localdate():
+            return 5
+        return 1
+
+    @property
+    def status_display(self):
+        return dict(choices.MEMBER_TASK_STATUS_CHOICES)[self.status]
+
+    @property
+    def is_submitted(self):
+        return self.submitted_at is not None
+
+    @property
+    def is_fulfilled(self):
+        # only an approved task avoids the deduction; rejected counts as missed
+        return self.is_approved is True
+
+    def submit(self, proof_link=None, proof_file=None, note=None):
+        self.submitted_at = timezone.now()
+        self.proof_link = proof_link
+        if proof_file is not None:
+            self.proof_file = proof_file
+        self.note = note
+        self.save()
+
+    def review(self, admin, is_approved, reject_reason=None):
+        self.reviewed_at = timezone.now()
+        self.reviewed_by = admin
+        self.is_approved = is_approved
+        self.reject_reason = reject_reason if not is_approved else None
+        self.save()

@@ -1,4 +1,4 @@
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.serializers import ValidationError
@@ -47,7 +47,8 @@ class MemberViewSet(ReadOnlyModelViewSet):
         validated_data.pop("confirm_password")
 
         try:
-            user = UserModel.objects.create(username=username)
+            with transaction.atomic():
+                user = UserModel.objects.create(username=username)
         except IntegrityError:
             return responses.ExistingDataError(
                 item_key="Username", item_id=username,
@@ -260,9 +261,10 @@ class PlatformAccountViewSet(ReadOnlyModelViewSet):
         validated_data = serializer.validated_data
 
         try:
-            platform_account = models.PlatformAccount.objects.create(
-                member=self.get_member(), **validated_data
-            )
+            with transaction.atomic():
+                platform_account = models.PlatformAccount.objects.create(
+                    member=self.get_member(), **validated_data
+                )
         except IntegrityError:
             return responses.ExistingDataError(
                 item_key="Platform", item_id=validated_data["platform"],

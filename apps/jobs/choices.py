@@ -12,14 +12,12 @@ JOB_STATUS_CHOICES = (
     (4, _("COMPLETED")),
 )
 
-# How often the work is owed. Drives the period_key used to generate tasks.
 JOB_RECURRENCE_CHOICES = (
     (1, _("DAILY")),
     (2, _("WEEKLY")),
     (3, _("MONTHLY")),
 )
 
-# How the payment is quoted. Independent of recurrence.
 PAYMENT_PERIOD_CHOICES = (
     (1, _("DAILY")),
     (2, _("WEEKLY")),
@@ -36,4 +34,26 @@ CONTENT_TYPE_CHOICES = (
     (2, _("STORY")),
     (3, _("POST")),
     (4, _("VIDEO")),
+)
+
+MEMBER_JOB_STATUS_CHOICES = (
+    (1, _("APPLIED")),
+    (2, _("ACTIVE")),
+    (3, _("COMPLETED")),
+    (4, _("REJECTED")),
+)
+
+AFFILIATE_LINK_STATUS_CHOICES = (
+    (1, _("PENDING")),
+    (2, _("SUBMITTED")),
+    (3, _("ACTIVE")),
+    (4, _("PAUSED")),
+)
+
+MEMBER_TASK_STATUS_CHOICES = (
+    (1, _("PENDING")),
+    (2, _("SUBMITTED")),
+    (3, _("APPROVED")),
+    (4, _("REJECTED")),
+    (5, _("MISSED")),
 )

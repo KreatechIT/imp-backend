@@ -26,8 +26,6 @@ class UserManager(BaseUserManager):
 
 
 class UUIDModel(models.Model):
-    """Integer primary key plus a public uuid, which is what viewsets expose."""
-
     uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
 
     class Meta:
@@ -115,9 +113,7 @@ class UserModel(AbstractBaseUser):
 
     @property
     def is_active(self):
-        # Derived, not stored. Django's ModelBackend and SimpleJWT only ever
-        # read is_active, so deriving it from `archived` keeps one source of
-        # truth while still rejecting archived accounts on every request.
+        # derived: auth backends only ever read is_active
         return self.archived is None
 
     @property

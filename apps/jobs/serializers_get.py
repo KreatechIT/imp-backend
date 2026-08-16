@@ -72,6 +72,97 @@ class JobSerializer(serializers.ModelSerializer):
         ]
 
 
+class MemberJobSerializer(serializers.ModelSerializer):
+    member = serializers.CharField(source="member.display_name")
+    member_uuid = serializers.UUIDField(source="member.uuid")
+    username = serializers.CharField(source="member.user.username")
+    company = serializers.CharField(source="job.company.name")
+    company_logo = serializers.ImageField(source="job.company.logo")
+    job_uuid = serializers.UUIDField(source="job.uuid")
+    job_title = serializers.CharField(source="job.title")
+    payment_amount = serializers.DecimalField(
+        source="job.payment_amount", max_digits=12, decimal_places=2,
+    )
+    payment_period = serializers.CharField(source="job.get_payment_period_display")
+    recurrence = serializers.CharField(source="job.get_recurrence_display")
+    status = serializers.CharField(source="get_status_display")
+    affiliate_link_status = serializers.CharField(
+        source="get_affiliate_link_status_display",
+    )
+
+    class Meta:
+        model = models.MemberJob
+        fields = [
+            "uuid",
+            "member",
+            "member_uuid",
+            "username",
+            "company",
+            "company_logo",
+            "job_uuid",
+            "job_title",
+            "payment_amount",
+            "payment_period",
+            "recurrence",
+            "status",
+            "affiliate_link",
+            "affiliate_link_status",
+            "joined",
+            "completed",
+            "created",
+        ]
+
+
+class MemberTaskSerializer(serializers.ModelSerializer):
+    member = serializers.CharField(source="member_job.member.display_name")
+    member_uuid = serializers.UUIDField(source="member_job.member.uuid")
+    company = serializers.CharField(source="member_job.job.company.name")
+    job_title = serializers.CharField(source="member_job.job.title")
+    member_job_uuid = serializers.UUIDField(source="member_job.uuid")
+    platform = serializers.CharField(source="requirement.get_platform_display")
+    content_type = serializers.CharField(source="requirement.get_content_type_display")
+    quantity = serializers.IntegerField(source="requirement.quantity")
+    status = serializers.IntegerField()
+    status_display = serializers.CharField()
+
+    class Meta:
+        model = models.MemberTask
+        fields = [
+            "uuid",
+            "member",
+            "member_uuid",
+            "company",
+            "job_title",
+            "member_job_uuid",
+            "platform",
+            "content_type",
+            "quantity",
+            "period_key",
+            "period_start",
+            "period_end",
+            "status",
+            "status_display",
+            "proof_link",
+            "proof_file",
+            "note",
+            "submitted_at",
+            "reviewed_at",
+            "is_approved",
+            "reject_reason",
+        ]
+
+
+class AvailableJobSerializer(JobSerializer):
+    is_subscribed = serializers.SerializerMethodField()
+
+    def get_is_subscribed(self, obj):
+        subscribed = self.context.get("subscribed_job_ids") or set()
+        return obj.id in subscribed
+
+    class Meta(JobSerializer.Meta):
+        fields = JobSerializer.Meta.fields + ["is_subscribed"]
+
+
 class JobSettingsSerializer(serializers.ModelSerializer):
     default_payment_period = serializers.CharField(
         source="get_default_payment_period_display",

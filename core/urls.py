@@ -13,7 +13,9 @@ urlpatterns = [
 
     # apps urls
     path("admins/", include(("apps.admins.urls", "admins"), namespace="admins")),
+    path("members/", include(("apps.jobs.member_urls", "member-jobs"), namespace="member-jobs")),
     path("members/", include(("apps.members.urls", "members"), namespace="members")),
+    path("jobs/", include(("apps.jobs.urls", "jobs"), namespace="jobs")),
 
     # swagger urls
     path("schema/", SpectacularAPIView.as_view(), name="schema"),

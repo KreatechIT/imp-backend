@@ -1,4 +1,4 @@
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.serializers import ValidationError
@@ -43,7 +43,8 @@ class AdminViewSet(ReadOnlyModelViewSet):
         validated_data.pop("confirm_password")
 
         try:
-            user = UserModel.objects.create(username=username)
+            with transaction.atomic():
+                user = UserModel.objects.create(username=username)
         except IntegrityError:
             return responses.ExistingDataError(
                 item_key="Username", item_id=username,

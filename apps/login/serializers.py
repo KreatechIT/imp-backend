@@ -7,8 +7,6 @@ from base.models import UserModel
 
 
 class TokenObtainSerializer(serializers.Serializer):
-    """Resolves credentials to an audience: "admin", "member", or nothing."""
-
     username = serializers.CharField(required=True, allow_blank=False)
     password = serializers.CharField(
         required=True,
