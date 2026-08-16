@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "core",
     "base",
 
+    "apps.login",
     "apps.admins",
     "apps.members",
 

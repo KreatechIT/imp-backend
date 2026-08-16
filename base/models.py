@@ -78,7 +78,6 @@ class UserModel(AbstractBaseUser):
     )
 
     archived = models.DateTimeField(blank=True, null=True)
-    is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     is_superuser = models.BooleanField(default=False)
 
@@ -113,6 +112,13 @@ class UserModel(AbstractBaseUser):
     @property
     def is_archived(self):
         return self.archived is not None
+
+    @property
+    def is_active(self):
+        # Derived, not stored. Django's ModelBackend and SimpleJWT only ever
+        # read is_active, so deriving it from `archived` keeps one source of
+        # truth while still rejecting archived accounts on every request.
+        return self.archived is None
 
     @property
     def is_admin(self):
