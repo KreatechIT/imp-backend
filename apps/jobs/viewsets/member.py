@@ -7,7 +7,12 @@ from rest_framework.decorators import action
 from rest_framework.serializers import ValidationError
 from rest_framework.viewsets import ReadOnlyModelViewSet
 
-from apps.jobs import models, serializers_create, serializers_get
+from apps.jobs import (
+    helper_functions,
+    models,
+    serializers_create,
+    serializers_get,
+)
 from apps.members.models import Member
 from base import responses
 from core import permissions
@@ -111,7 +116,7 @@ class AvailableJobViewSet(ReadOnlyModelViewSet):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context["subscribed_job_ids"] = set(
+        context["applied_job_ids"] = set(
             models.MemberJob.objects
             .filter(member__uuid=self.kwargs.get("member_uuid"), archived=None)
             .values_list("job_id", flat=True)
@@ -119,7 +124,7 @@ class AvailableJobViewSet(ReadOnlyModelViewSet):
         return context
 
     @action(detail=True, methods=["post"])
-    def subscribe(self, request, uuid=None, *args, **kwargs):
+    def apply(self, request, uuid=None, *args, **kwargs):
         member_uuid = self.kwargs.get("member_uuid")
         member = Member.objects.filter(uuid=member_uuid, archived=None).first()
         if member is None:
@@ -136,7 +141,7 @@ class AvailableJobViewSet(ReadOnlyModelViewSet):
 
         if not job.is_live:
             return responses.BadRequestError(
-                details="Job is not open for subscription"
+                details="Job is not open for applications"
             ).get_response()
 
         try:
@@ -146,7 +151,7 @@ class AvailableJobViewSet(ReadOnlyModelViewSet):
                 )
         except IntegrityError:
             return responses.ExistingDataError(
-                error_message="Already subscribed to this job",
+                error_message="Already applied to this job",
             ).get_response()
 
         data = serializers_get.MemberJobSerializer(member_job).data
@@ -179,6 +184,15 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
         if period_key:
             queryset = queryset.filter(period_key=period_key)
         return queryset
+
+    @action(detail=False, methods=["get"], url_path="today")
+    def today(self, request, *args, **kwargs):
+        queryset = helper_functions.ensure_today_tasks(
+            self.kwargs.get("member_uuid")
+        )
+
+        data = self.serializer_class(queryset, many=True).data
+        return responses.SuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.SubmitTaskSerializer)
     @action(detail=True, methods=["post", "patch"])

@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "apps.admins",
     "apps.members",
     "apps.jobs",
+    "apps.front_view",
 
     "drf_spectacular",
     "drf_spectacular_sidecar",

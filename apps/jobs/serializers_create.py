@@ -52,8 +52,8 @@ class JobSerializer(serializers.Serializer):
         max_digits=12, decimal_places=2, min_value=0,
         required=False, allow_null=True,
     )
-    start_date = serializers.DateField(required=True)
-    end_date = serializers.DateField(required=False, allow_null=True)
+    start_date = serializers.DateTimeField(required=True)
+    end_date = serializers.DateTimeField(required=False, allow_null=True)
     status = serializers.ChoiceField(choices=choices.JOB_STATUS_CHOICES, default=1)
     requirements = JobRequirementSerializer(many=True, required=False)
 
@@ -86,8 +86,8 @@ class EditJobSerializer(serializers.Serializer):
         max_digits=12, decimal_places=2, min_value=0,
         required=False, allow_null=True,
     )
-    start_date = serializers.DateField(required=False)
-    end_date = serializers.DateField(required=False, allow_null=True)
+    start_date = serializers.DateTimeField(required=False)
+    end_date = serializers.DateTimeField(required=False, allow_null=True)
     status = serializers.ChoiceField(
         choices=choices.JOB_STATUS_CHOICES, required=False,
     )

@@ -137,8 +137,10 @@ class Job(TimeStampedModel):
         blank=True,
         null=True,
     )
-    start_date = models.DateField(verbose_name=_("Start Date"))
-    end_date = models.DateField(verbose_name=_("End Date"), blank=True, null=True)
+    start_date = models.DateTimeField(verbose_name=_("Start Date"))
+    end_date = models.DateTimeField(
+        verbose_name=_("End Date"), blank=True, null=True,
+    )
     status = models.IntegerField(
         verbose_name=_("Status"),
         choices=choices.JOB_STATUS_CHOICES,
@@ -166,12 +168,12 @@ class Job(TimeStampedModel):
 
     @property
     def is_live(self):
-        today = timezone.localdate()
+        now = timezone.now()
         if self.status != 2 or self.archived:
             return False
-        if today < self.start_date:
+        if now < self.start_date:
             return False
-        if self.end_date and today > self.end_date:
+        if self.end_date and now > self.end_date:
             return False
         return True
 

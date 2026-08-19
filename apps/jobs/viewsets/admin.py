@@ -181,6 +181,13 @@ class JobViewSet(ReadOnlyModelViewSet):
                     item_key="Company Id", item_id=company_uuid,
                 ).get_response()
 
+        start_date = validated_data.get("start_date", job.start_date)
+        end_date = validated_data.get("end_date", job.end_date)
+        if end_date and end_date < start_date:
+            return responses.InvalidDataError(details={
+                "end_date": "End date cannot be before start date."
+            }).get_response()
+
         job.update(**validated_data)
 
         data = self.serializer_class(job).data

@@ -154,14 +154,14 @@ class MemberTaskSerializer(serializers.ModelSerializer):
 
 
 class AvailableJobSerializer(JobSerializer):
-    is_subscribed = serializers.SerializerMethodField()
+    is_applied = serializers.SerializerMethodField()
 
-    def get_is_subscribed(self, obj):
-        subscribed = self.context.get("subscribed_job_ids") or set()
-        return obj.id in subscribed
+    def get_is_applied(self, obj):
+        applied = self.context.get("applied_job_ids") or set()
+        return obj.id in applied
 
     class Meta(JobSerializer.Meta):
-        fields = JobSerializer.Meta.fields + ["is_subscribed"]
+        fields = JobSerializer.Meta.fields + ["is_applied"]
 
 
 class JobSettingsSerializer(serializers.ModelSerializer):
