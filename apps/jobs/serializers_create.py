@@ -8,6 +8,9 @@ class CompanySerializer(serializers.Serializer):
     status = serializers.ChoiceField(
         choices=choices.COMPANY_STATUS_CHOICES, default=1,
     )
+    telegram_link = serializers.URLField(
+        required=False, allow_null=True, allow_blank=True,
+    )
     logo = serializers.ImageField(required=False, allow_null=True)
 
 
@@ -15,6 +18,9 @@ class EditCompanySerializer(serializers.Serializer):
     name = serializers.CharField(required=False)
     status = serializers.ChoiceField(
         choices=choices.COMPANY_STATUS_CHOICES, required=False,
+    )
+    telegram_link = serializers.URLField(
+        required=False, allow_null=True, allow_blank=True,
     )
     logo = serializers.ImageField(required=False, allow_null=True)
 

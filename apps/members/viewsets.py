@@ -1,4 +1,5 @@
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.serializers import ValidationError
@@ -19,9 +20,30 @@ class MemberViewSet(ReadOnlyModelViewSet):
     item_key = "Member Id"
 
     def get_queryset(self):
-        queryset = models.Member.objects.filter(archived=None).order_by("-created")
+        queryset = (
+            models.Member.objects
+            .filter(archived=None)
+            .select_related("user")
+            .order_by("-created")
+        )
+
+        search = self.request.query_params.get("search")
         username = self.request.query_params.get("username")
         status = self.request.query_params.get("status")
+        from_date = self.request.query_params.get("from_date")
+        to_date = self.request.query_params.get("to_date")
+
+        if from_date and to_date:
+            queryset = queryset.filter(created__date__range=(from_date, to_date))
+        if search:
+            queryset = queryset.filter(
+                Q(full_name__icontains=search)
+                | Q(user__username__icontains=search)
+                | Q(phone_number__icontains=search)
+                | Q(email__icontains=search)
+                | Q(bank_details__account_number__icontains=search)
+                | Q(bank_details__account_holder_name__icontains=search)
+            ).distinct()
         if username:
             queryset = queryset.filter(user__username__icontains=username)
         if status:
@@ -46,18 +68,21 @@ class MemberViewSet(ReadOnlyModelViewSet):
         password = validated_data.pop("password")
         validated_data.pop("confirm_password")
 
-        try:
-            with transaction.atomic():
-                user = UserModel.objects.create(username=username)
-        except IntegrityError:
+        if UserModel.objects.filter(username=username).exists():
             return responses.ExistingDataError(
                 item_key="Username", item_id=username,
             ).get_response()
 
-        user.set_password(password)
-        user.save()
-
-        member = models.Member.objects.create(user=user, **validated_data)
+        try:
+            with transaction.atomic():
+                user = UserModel.objects.create(username=username)
+                user.set_password(password)
+                user.save()
+                member = models.Member.objects.create(user=user, **validated_data)
+        except IntegrityError:
+            return responses.ExistingDataError(
+                error_message="Phone number or email already exists",
+            ).get_response()
 
         data = serializers_get.MemberSerializer(member).data
         return responses.CreatedSuccessResponse(data=data).get_response()
@@ -83,7 +108,13 @@ class MemberViewSet(ReadOnlyModelViewSet):
                 item_key=self.item_key, item_id=uuid,
             ).get_response()
 
-        member.update(**validated_data)
+        try:
+            with transaction.atomic():
+                member.update(**validated_data)
+        except IntegrityError:
+            return responses.ExistingDataError(
+                error_message="Phone number or email already exists",
+            ).get_response()
 
         data = serializers_get.MemberSerializer(member).data
         return responses.SuccessResponse(data=data).get_response()
@@ -93,8 +124,8 @@ class MemberViewSet(ReadOnlyModelViewSet):
         return self.update(request, uuid=uuid, *args, **kwargs)
 
     @extend_schema(request=serializers_create.ResetPasswordSerializer)
-    @action(detail=True, methods=["patch"])
-    def resetpassword(self, request, uuid=None, *args, **kwargs):
+    @action(detail=True, methods=["patch"], url_path="change-password")
+    def change_password(self, request, uuid=None, *args, **kwargs):
         serializer = serializers_create.ResetPasswordSerializer(data=request.data)
         try:
             serializer.is_valid(raise_exception=True)

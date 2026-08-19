@@ -23,9 +23,27 @@ class Member(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="member",
     )
-    display_name = models.CharField(
-        verbose_name=_("Display Name"),
+    full_name = models.CharField(
+        verbose_name=_("Full Name"),
         max_length=150,
+        blank=True,
+        null=True,
+    )
+    phone_number = models.CharField(
+        verbose_name=_("Phone Number"),
+        max_length=20,
+        blank=True,
+        null=True,
+        unique=True,
+    )
+    email = models.EmailField(
+        verbose_name=_("Email"),
+        blank=True,
+        null=True,
+        unique=True,
+    )
+    date_of_birth = models.DateField(
+        verbose_name=_("Date of Birth"),
         blank=True,
         null=True,
     )
@@ -41,18 +59,6 @@ class Member(TimeStampedModel):
         choices=choices.MEMBER_STATUS_CHOICES,
         default=1,
     )
-    affiliate_link = models.URLField(
-        verbose_name=_("Affiliate Link"),
-        max_length=500,
-        blank=True,
-        null=True,
-    )
-    telegram_link = models.URLField(
-        verbose_name=_("Telegram Group Link"),
-        max_length=500,
-        blank=True,
-        null=True,
-    )
     joined = models.DateField(blank=True, null=True)
     archived = models.DateTimeField(blank=True, null=True)
 
@@ -60,10 +66,11 @@ class Member(TimeStampedModel):
         indexes = [
             models.Index(fields=["created"]),
             models.Index(fields=["status"]),
+            models.Index(fields=["phone_number"]),
         ]
 
     def __str__(self):
-        return self.display_name or self.user.username
+        return self.full_name or self.user.username
 
     def archive(self):
         self.archived = timezone.now()

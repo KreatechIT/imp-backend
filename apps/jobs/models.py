@@ -67,6 +67,12 @@ class Company(TimeStampedModel):
         upload_to=company_upload_to,
         validators=[encryption.validate_file_size],
     )
+    telegram_link = models.URLField(
+        verbose_name=_("Telegram Group Link"),
+        max_length=500,
+        blank=True,
+        null=True,
+    )
     status = models.IntegerField(
         verbose_name=_("Status"),
         choices=choices.COMPANY_STATUS_CHOICES,

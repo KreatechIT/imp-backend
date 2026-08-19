@@ -16,6 +16,7 @@ class CompanySerializer(serializers.ModelSerializer):
             "uuid",
             "name",
             "logo",
+            "telegram_link",
             "status",
             "total_jobs",
             "created",
@@ -73,7 +74,7 @@ class JobSerializer(serializers.ModelSerializer):
 
 
 class MemberJobSerializer(serializers.ModelSerializer):
-    member = serializers.CharField(source="member.display_name")
+    member = serializers.CharField(source="member.full_name")
     member_uuid = serializers.UUIDField(source="member.uuid")
     username = serializers.CharField(source="member.user.username")
     company = serializers.CharField(source="job.company.name")
@@ -114,7 +115,7 @@ class MemberJobSerializer(serializers.ModelSerializer):
 
 
 class MemberTaskSerializer(serializers.ModelSerializer):
-    member = serializers.CharField(source="member_job.member.display_name")
+    member = serializers.CharField(source="member_job.member.full_name")
     member_uuid = serializers.UUIDField(source="member_job.member.uuid")
     company = serializers.CharField(source="member_job.job.company.name")
     job_title = serializers.CharField(source="member_job.job.title")
