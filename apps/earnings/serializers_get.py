@@ -66,3 +66,30 @@ class MissedSerializer(serializers.Serializer):
     missed_count = serializers.IntegerField()
     deduction = serializers.DecimalField(max_digits=12, decimal_places=2)
     days = MissedDaySerializer(many=True)
+
+
+class StatisticsRowSerializer(serializers.Serializer):
+    member_uuid = serializers.UUIDField()
+    full_name = serializers.CharField()
+    username = serializers.CharField()
+    phone_number = serializers.CharField()
+    email = serializers.CharField()
+    status = serializers.CharField()
+    job_count = serializers.IntegerField()
+    base_pay = serializers.DecimalField(max_digits=12, decimal_places=2)
+    missed_count = serializers.IntegerField()
+    deduction = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+
+class StatisticsSummarySerializer(serializers.Serializer):
+    period_key = serializers.CharField()
+    from_date = serializers.DateField()
+    to_date = serializers.DateField()
+    member_count = serializers.IntegerField()
+    earning_member_count = serializers.IntegerField()
+    missed_member_count = serializers.IntegerField()
+    base_pay = serializers.DecimalField(max_digits=14, decimal_places=2)
+    missed_count = serializers.IntegerField()
+    deduction = serializers.DecimalField(max_digits=14, decimal_places=2)
+    total = serializers.DecimalField(max_digits=14, decimal_places=2)

@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from apps.jobs import models as job_models
 from apps.jobs.helper_functions import resolve_period
+from apps.members.models import Member
 
 
 def _month_end(day):
@@ -196,3 +197,86 @@ def missed_breakdown(member_uuid, month_key=None):
         "deduction": deduction_total,
         "days": days,
     }
+
+
+def member_rows(members, month_key=None):
+    """One earnings summary per member, for the statistics table."""
+    rows = []
+    for member in members:
+        breakdown = earnings_breakdown(member.uuid, month_key)
+        rows.append({
+            "member_uuid": member.uuid,
+            "full_name": member.full_name,
+            "username": member.user.username,
+            "phone_number": member.phone_number,
+            "email": member.email,
+            "status": member.get_status_display(),
+            "job_count": len(breakdown["jobs"]),
+            "base_pay": breakdown["base_pay"],
+            "missed_count": breakdown["missed_count"],
+            "deduction": breakdown["deduction"],
+            "total": breakdown["total"],
+        })
+    return rows
+
+
+SORT_FIELDS = {
+    "total": ("total", False),
+    "-total": ("total", True),
+    "missed": ("missed_count", False),
+    "-missed": ("missed_count", True),
+    "deduction": ("deduction", False),
+    "-deduction": ("deduction", True),
+    "name": ("full_name", False),
+}
+
+
+def statistics(month_key=None, search=None, status=None, sort=None,
+               min_total=None, max_total=None):
+    """The admin earnings table: a row per member, plus the KPI totals.
+
+    Rows are computed in Python because base pay and deductions come from the
+    job schedule rather than stored columns, so the member set is narrowed in
+    the database first and only the survivors are costed.
+    """
+    period_key, from_date, to_date = month_bounds(month_key)
+
+    members = (
+        Member.objects
+        .filter(archived=None)
+        .select_related("user")
+        .order_by("-created")
+    )
+    if search:
+        members = members.filter(
+            Q(full_name__icontains=search)
+            | Q(user__username__icontains=search)
+            | Q(phone_number__icontains=search)
+            | Q(email__icontains=search)
+        )
+    if status:
+        members = members.filter(status=status)
+
+    rows = member_rows(members, month_key)
+
+    if min_total is not None:
+        rows = [row for row in rows if row["total"] >= min_total]
+    if max_total is not None:
+        rows = [row for row in rows if row["total"] <= max_total]
+
+    field, reverse = SORT_FIELDS.get(sort or "-total", ("total", True))
+    rows.sort(key=lambda row: row[field] or 0, reverse=reverse)
+
+    summary = {
+        "period_key": period_key,
+        "from_date": from_date,
+        "to_date": to_date,
+        "member_count": len(rows),
+        "earning_member_count": len([r for r in rows if r["total"] > 0]),
+        "missed_member_count": len([r for r in rows if r["missed_count"] > 0]),
+        "base_pay": sum((row["base_pay"] for row in rows), Decimal("0.00")),
+        "missed_count": sum(row["missed_count"] for row in rows),
+        "deduction": sum((row["deduction"] for row in rows), Decimal("0.00")),
+        "total": sum((row["total"] for row in rows), Decimal("0.00")),
+    }
+    return summary, rows

@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "apps.members",
     "apps.jobs",
     "apps.front_view",
+    "apps.earnings",
 
     "drf_spectacular",
     "drf_spectacular_sidecar",

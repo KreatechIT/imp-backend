@@ -1,5 +1,4 @@
 from django.db import IntegrityError, transaction
-from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.serializers import ValidationError

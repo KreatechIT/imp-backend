@@ -14,6 +14,24 @@ class MonthQuerySerializer(serializers.Serializer):
         return value or None
 
 
+class StatisticsQuerySerializer(MonthQuerySerializer):
+    search = serializers.CharField(required=False, allow_blank=True)
+    status = serializers.IntegerField(required=False)
+    sort = serializers.ChoiceField(
+        required=False,
+        choices=[
+            "total", "-total", "missed", "-missed",
+            "deduction", "-deduction", "name",
+        ],
+    )
+    min_total = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False,
+    )
+    max_total = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False,
+    )
+
+
 class PayoutSerializer(serializers.Serializer):
     member_uuid = serializers.UUIDField(required=True)
     period_key = serializers.CharField(required=True)

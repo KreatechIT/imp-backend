@@ -57,21 +57,25 @@ def ensure_today_tasks(member_uuid):
     archived simply stops producing tasks and leaves nothing stale behind.
     """
     period_keys = []
+    pending = []
 
     for member_job in live_member_jobs(member_uuid):
         period_key, period_start, period_end = resolve_period(member_job.job)
         period_keys.append(period_key)
 
         for requirement in member_job.job.requirements.filter(archived=None):
-            models.MemberTask.objects.get_or_create(
-                member_job=member_job,
-                requirement=requirement,
-                period_key=period_key,
-                defaults={
-                    "period_start": period_start,
-                    "period_end": period_end,
-                },
+            pending.append(
+                models.MemberTask(
+                    member_job=member_job,
+                    requirement=requirement,
+                    period_key=period_key,
+                    period_start=period_start,
+                    period_end=period_end,
+                )
             )
+
+    # the unique constraint absorbs the rows that are already there
+    models.MemberTask.objects.bulk_create(pending, ignore_conflicts=True)
 
     today = timezone.localdate()
     return (

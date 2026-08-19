@@ -14,9 +14,11 @@ urlpatterns = [
     # apps urls
     path("admins/", include(("apps.admins.urls", "admins"), namespace="admins")),
     path("members/", include(("apps.jobs.member_urls", "member-jobs"), namespace="member-jobs")),
+    path("members/", include(("apps.earnings.member_urls", "member-earnings"), namespace="member-earnings")),
     path("members/", include(("apps.members.urls", "members"), namespace="members")),
     path("jobs/", include(("apps.jobs.urls", "jobs"), namespace="jobs")),
     path("front-view/", include(("apps.front_view.urls", "front-view"), namespace="front-view")),
+    path("earnings/", include(("apps.earnings.urls", "earnings"), namespace="earnings")),
 
     # swagger urls
     path("schema/", SpectacularAPIView.as_view(), name="schema"),
