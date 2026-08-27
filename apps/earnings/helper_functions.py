@@ -15,7 +15,6 @@ def _month_end(day):
 
 
 def month_bounds(month_key=None):
-    """(key, first day, last day) for a YYYY-MM key, defaulting to this month."""
     today = timezone.localdate()
     if month_key:
         year, month = (int(part) for part in month_key.split("-"))
@@ -29,7 +28,6 @@ def month_bounds(month_key=None):
 
 
 def _job_window(job, from_date, to_date):
-    """The part of [from_date, to_date] the job actually covers."""
     start = max(from_date, timezone.localtime(job.start_date).date())
     end = to_date
     if job.end_date:
@@ -38,7 +36,6 @@ def _job_window(job, from_date, to_date):
 
 
 def iter_periods(job, from_date, to_date):
-    """Every task period of the job overlapping the range."""
     day, limit = _job_window(job, from_date, to_date)
     while day <= limit:
         period_key, period_start, period_end = resolve_period(job, day)
@@ -56,7 +53,6 @@ def _cycle_end(day, payment_period):
 
 
 def payment_cycles(job, from_date, to_date):
-    """How many pay cycles of the job fall inside the range."""
     day, limit = _job_window(job, from_date, to_date)
     cycles = 0
     while day <= limit:
@@ -65,16 +61,11 @@ def payment_cycles(job, from_date, to_date):
     return cycles
 
 
-def missed_periods(member_job, from_date, to_date):
-    """Closed periods in the range the member did not complete in full.
-
-    A period counts as missed unless every requirement in it was approved, so
-    a rejected or unsubmitted task both leave the day short.
-    """
+def period_results(member_job, from_date, to_date):
     job = member_job.job
     required = job.requirements.filter(archived=None).count()
     if not required:
-        return []
+        return [], 0
 
     approved = {}
     rows = member_job.tasks.filter(
@@ -87,6 +78,7 @@ def missed_periods(member_job, from_date, to_date):
 
     today = timezone.localdate()
     missed = []
+    posted = 0
     for period_key, period_start, period_end in iter_periods(job, from_date, to_date):
         if period_end >= today:
             continue
@@ -96,11 +88,12 @@ def missed_periods(member_job, from_date, to_date):
                 "period_start": period_start,
                 "period_end": period_end,
             })
-    return missed
+        else:
+            posted += 1
+    return missed, posted
 
 
 def member_jobs_in_range(member_uuid, from_date, to_date):
-    """Jobs the member held at any point during the range."""
     return (
         job_models.MemberJob.objects
         .filter(
@@ -119,18 +112,18 @@ def member_jobs_in_range(member_uuid, from_date, to_date):
 
 
 def earnings_breakdown(member_uuid, month_key=None):
-    """Base pay less deductions for one month, per job and in total."""
     period_key, from_date, to_date = month_bounds(month_key)
 
     jobs = []
     base_total = Decimal("0.00")
     deduction_total = Decimal("0.00")
     missed_total = 0
+    posted_total = 0
 
     for member_job in member_jobs_in_range(member_uuid, from_date, to_date):
         job = member_job.job
         cycles = payment_cycles(job, from_date, to_date)
-        missed = missed_periods(member_job, from_date, to_date)
+        missed, posted = period_results(member_job, from_date, to_date)
 
         base = job.payment_amount * cycles
         deduction = (job.deduction_per_miss or Decimal("0.00")) * len(missed)
@@ -138,6 +131,7 @@ def earnings_breakdown(member_uuid, month_key=None):
         base_total += base
         deduction_total += deduction
         missed_total += len(missed)
+        posted_total += posted
 
         jobs.append({
             "member_job_uuid": member_job.uuid,
@@ -148,6 +142,7 @@ def earnings_breakdown(member_uuid, month_key=None):
             "cycles": cycles,
             "base_pay": base,
             "missed_count": len(missed),
+            "posted_count": posted,
             "deduction": deduction,
             "total": base - deduction,
         })
@@ -158,6 +153,7 @@ def earnings_breakdown(member_uuid, month_key=None):
         "to_date": to_date,
         "base_pay": base_total,
         "missed_count": missed_total,
+        "posted_count": posted_total,
         "deduction": deduction_total,
         "total": base_total - deduction_total,
         "jobs": jobs,
@@ -165,7 +161,6 @@ def earnings_breakdown(member_uuid, month_key=None):
 
 
 def missed_breakdown(member_uuid, month_key=None):
-    """Every missed day in the month, with what each one cost."""
     period_key, from_date, to_date = month_bounds(month_key)
 
     days = []
@@ -175,7 +170,8 @@ def missed_breakdown(member_uuid, month_key=None):
         job = member_job.job
         deduction_per_miss = job.deduction_per_miss or Decimal("0.00")
 
-        for missed in missed_periods(member_job, from_date, to_date):
+        missed_days, _ = period_results(member_job, from_date, to_date)
+        for missed in missed_days:
             deduction_total += deduction_per_miss
             days.append({
                 "member_job_uuid": member_job.uuid,
@@ -200,7 +196,6 @@ def missed_breakdown(member_uuid, month_key=None):
 
 
 def member_rows(members, month_key=None):
-    """One earnings summary per member, for the statistics table."""
     rows = []
     for member in members:
         breakdown = earnings_breakdown(member.uuid, month_key)
@@ -233,12 +228,6 @@ SORT_FIELDS = {
 
 def statistics(month_key=None, search=None, status=None, sort=None,
                min_total=None, max_total=None):
-    """The admin earnings table: a row per member, plus the KPI totals.
-
-    Rows are computed in Python because base pay and deductions come from the
-    job schedule rather than stored columns, so the member set is narrowed in
-    the database first and only the survivors are costed.
-    """
     period_key, from_date, to_date = month_bounds(month_key)
 
     members = (

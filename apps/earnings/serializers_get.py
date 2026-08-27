@@ -34,6 +34,7 @@ class EarningsJobSerializer(serializers.Serializer):
     cycles = serializers.IntegerField()
     base_pay = serializers.DecimalField(max_digits=12, decimal_places=2)
     missed_count = serializers.IntegerField()
+    posted_count = serializers.IntegerField()
     deduction = serializers.DecimalField(max_digits=12, decimal_places=2)
     total = serializers.DecimalField(max_digits=12, decimal_places=2)
 
@@ -44,6 +45,7 @@ class EarningsSerializer(serializers.Serializer):
     to_date = serializers.DateField()
     base_pay = serializers.DecimalField(max_digits=12, decimal_places=2)
     missed_count = serializers.IntegerField()
+    posted_count = serializers.IntegerField()
     deduction = serializers.DecimalField(max_digits=12, decimal_places=2)
     total = serializers.DecimalField(max_digits=12, decimal_places=2)
     jobs = EarningsJobSerializer(many=True)
