@@ -44,7 +44,7 @@ class CompanyViewSet(ReadOnlyModelViewSet):
                 item_key="Company", item_id=serializer.validated_data["name"],
             ).get_response()
 
-        data = self.serializer_class(company).data
+        data = self.serializer_class(company, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.EditCompanySerializer)
@@ -69,7 +69,7 @@ class CompanyViewSet(ReadOnlyModelViewSet):
 
         company.update(**serializer.validated_data)
 
-        data = self.serializer_class(company).data
+        data = self.serializer_class(company, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.EditCompanySerializer)
@@ -92,7 +92,7 @@ class CompanyViewSet(ReadOnlyModelViewSet):
 
         company.archive()
 
-        data = self.serializer_class(company).data
+        data = self.serializer_class(company, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
 
@@ -146,7 +146,7 @@ class JobViewSet(ReadOnlyModelViewSet):
         for requirement in requirements:
             models.JobRequirement.objects.create(job=job, **requirement)
 
-        data = self.serializer_class(job).data
+        data = self.serializer_class(job, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.EditJobSerializer)
@@ -190,7 +190,7 @@ class JobViewSet(ReadOnlyModelViewSet):
 
         job.update(**validated_data)
 
-        data = self.serializer_class(job).data
+        data = self.serializer_class(job, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.EditJobSerializer)
@@ -213,7 +213,7 @@ class JobViewSet(ReadOnlyModelViewSet):
 
         job.archive()
 
-        data = self.serializer_class(job).data
+        data = self.serializer_class(job, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
 
@@ -255,7 +255,7 @@ class JobRequirementViewSet(ReadOnlyModelViewSet):
         except IntegrityError:
             return responses.ExistingDataError(item_key="Requirement").get_response()
 
-        data = self.serializer_class(requirement).data
+        data = self.serializer_class(requirement, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.JobRequirementSerializer)
@@ -277,7 +277,7 @@ class JobRequirementViewSet(ReadOnlyModelViewSet):
 
         requirement.update(**serializer.validated_data)
 
-        data = self.serializer_class(requirement).data
+        data = self.serializer_class(requirement, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
     @action(detail=True, methods=["patch"])
@@ -298,7 +298,7 @@ class JobRequirementViewSet(ReadOnlyModelViewSet):
 
         requirement.archive()
 
-        data = self.serializer_class(requirement).data
+        data = self.serializer_class(requirement, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
 
@@ -371,7 +371,7 @@ class SubmissionViewSet(ReadOnlyModelViewSet):
 
         task.review(admin=request.user.admin, is_approved=True)
 
-        data = self.serializer_class(task).data
+        data = self.serializer_class(task, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.RejectTaskSerializer)
@@ -400,5 +400,5 @@ class SubmissionViewSet(ReadOnlyModelViewSet):
             reject_reason=serializer.validated_data["reject_reason"],
         )
 
-        data = self.serializer_class(task).data
+        data = self.serializer_class(task, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()

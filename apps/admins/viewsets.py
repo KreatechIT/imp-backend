@@ -55,7 +55,7 @@ class AdminViewSet(ReadOnlyModelViewSet):
 
         admin = models.Admin.objects.create(user=user, **validated_data)
 
-        data = self.serializer_class(admin).data
+        data = self.serializer_class(admin, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.EditAdminSerializer)
@@ -81,7 +81,7 @@ class AdminViewSet(ReadOnlyModelViewSet):
 
         admin.update(**validated_data)
 
-        data = self.serializer_class(admin).data
+        data = self.serializer_class(admin, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.EditAdminSerializer)
@@ -109,7 +109,7 @@ class AdminViewSet(ReadOnlyModelViewSet):
         user.set_password(validated_data["password"])
         user.save()
 
-        data = self.serializer_class(admin).data
+        data = self.serializer_class(admin, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
     @action(detail=True, methods=["patch"])
@@ -129,7 +129,7 @@ class AdminViewSet(ReadOnlyModelViewSet):
         admin.archive()
         admin.user.archive()
 
-        data = self.serializer_class(admin).data
+        data = self.serializer_class(admin, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
 

@@ -8,5 +8,6 @@ urlpatterns = [
         views.EarningsStatisticsView.as_view(),
         name="statistics",
     ),
+    path("kpi/", views.EarningsKpiView.as_view(), name="kpi"),
     path("", include(routers.earnings_router.urls)),
 ]

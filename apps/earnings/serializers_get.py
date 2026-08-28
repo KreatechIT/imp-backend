@@ -95,3 +95,14 @@ class StatisticsSummarySerializer(serializers.Serializer):
     missed_count = serializers.IntegerField()
     deduction = serializers.DecimalField(max_digits=14, decimal_places=2)
     total = serializers.DecimalField(max_digits=14, decimal_places=2)
+
+
+class EarningsKpiSerializer(serializers.Serializer):
+    member_count = serializers.IntegerField()
+    earning_member_count = serializers.IntegerField()
+    missed_member_count = serializers.IntegerField()
+    base_pay = serializers.DecimalField(max_digits=14, decimal_places=2)
+    posted_count = serializers.IntegerField()
+    missed_count = serializers.IntegerField()
+    deduction = serializers.DecimalField(max_digits=14, decimal_places=2)
+    total = serializers.DecimalField(max_digits=14, decimal_places=2)

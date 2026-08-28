@@ -59,7 +59,7 @@ class MemberJobViewSet(ReadOnlyModelViewSet):
 
         member_job.update(**updates)
 
-        data = self.serializer_class(member_job).data
+        data = self.serializer_class(member_job, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.EditMemberJobSerializer)
@@ -154,7 +154,9 @@ class AvailableJobViewSet(ReadOnlyModelViewSet):
                 error_message="Already applied to this job",
             ).get_response()
 
-        data = serializers_get.MemberJobSerializer(member_job).data
+        data = serializers_get.MemberJobSerializer(
+            member_job, context={"request": self.request},
+        ).data
         return responses.CreatedSuccessResponse(data=data).get_response()
 
 
@@ -191,7 +193,7 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
             self.kwargs.get("member_uuid")
         )
 
-        data = self.serializer_class(queryset, many=True).data
+        data = self.serializer_class(queryset, many=True, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.SubmitTaskSerializer)
@@ -235,5 +237,5 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
             note=validated_data.get("note"),
         )
 
-        data = self.serializer_class(task).data
+        data = self.serializer_class(task, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()

@@ -18,7 +18,7 @@ class JobSettingsView(GenericAPIView):
         return settings_row
 
     def get(self, request, *args, **kwargs):
-        data = self.serializer_class(self.get_settings()).data
+        data = self.serializer_class(self.get_settings(), context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.JobSettingsSerializer)
@@ -32,5 +32,5 @@ class JobSettingsView(GenericAPIView):
         settings_row = self.get_settings()
         settings_row.update(**serializer.validated_data)
 
-        data = self.serializer_class(settings_row).data
+        data = self.serializer_class(settings_row, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()

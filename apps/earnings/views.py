@@ -16,7 +16,7 @@ class EarningsView(GenericAPIView):
     def get(self, request, member_uuid=None, *args, **kwargs):
         breakdown = helper_functions.earnings_breakdown(member_uuid)
 
-        data = self.serializer_class(breakdown).data
+        data = self.serializer_class(breakdown, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
 
@@ -29,7 +29,7 @@ class MissedView(GenericAPIView):
     def get(self, request, member_uuid=None, *args, **kwargs):
         breakdown = helper_functions.missed_breakdown(member_uuid)
 
-        data = self.serializer_class(breakdown).data
+        data = self.serializer_class(breakdown, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
 
@@ -63,10 +63,23 @@ class EarningsStatisticsView(GenericAPIView):
         page = paginator.paginate_queryset(rows, request, view=self)
 
         data = {
-            "summary": serializers_get.StatisticsSummarySerializer(summary).data,
+            "summary": serializers_get.StatisticsSummarySerializer(
+                summary, context={"request": self.request},
+            ).data,
             "count": paginator.page.paginator.count,
             "next": paginator.get_next_link(),
             "previous": paginator.get_previous_link(),
-            "results": self.serializer_class(page, many=True).data,
+            "results": self.serializer_class(
+                page, many=True, context={"request": self.request},
+            ).data,
         }
+        return responses.SuccessResponse(data=data).get_response()
+
+
+class EarningsKpiView(GenericAPIView):
+    permission_classes = [permissions.IsAdmin]
+    serializer_class = serializers_get.EarningsKpiSerializer
+
+    def get(self, request, *args, **kwargs):
+        data = self.get_serializer(helper_functions.earnings_kpi()).data
         return responses.SuccessResponse(data=data).get_response()

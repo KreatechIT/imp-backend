@@ -64,7 +64,7 @@ class PayoutViewSet(ReadOnlyModelViewSet):
                 item_key="Payout", item_id=validated_data["period_key"],
             ).get_response()
 
-        data = self.serializer_class(payout).data
+        data = self.serializer_class(payout, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.EditPayoutSerializer)
@@ -88,7 +88,7 @@ class PayoutViewSet(ReadOnlyModelViewSet):
 
         payout.update(**serializer.validated_data)
 
-        data = self.serializer_class(payout).data
+        data = self.serializer_class(payout, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.EditPayoutSerializer)
@@ -113,7 +113,7 @@ class PayoutViewSet(ReadOnlyModelViewSet):
 
         payout.mark_paid()
 
-        data = self.serializer_class(payout).data
+        data = self.serializer_class(payout, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
     @action(detail=True, methods=["patch"])
@@ -131,7 +131,7 @@ class PayoutViewSet(ReadOnlyModelViewSet):
 
         payout.archive()
 
-        data = self.serializer_class(payout).data
+        data = self.serializer_class(payout, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
 

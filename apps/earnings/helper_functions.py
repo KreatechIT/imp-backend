@@ -269,3 +269,44 @@ def statistics(month_key=None, search=None, status=None, sort=None,
         "total": sum((row["total"] for row in rows), Decimal("0.00")),
     }
     return summary, rows
+
+
+def earnings_kpi():
+    members = (
+        Member.objects
+        .filter(archived=None)
+        .select_related("user")
+    )
+
+    member_count = 0
+    earning_member_count = 0
+    missed_member_count = 0
+    base_pay = Decimal("0.00")
+    deduction = Decimal("0.00")
+    total = Decimal("0.00")
+    missed_count = 0
+    posted_count = 0
+
+    for member in members:
+        breakdown = earnings_breakdown(member.uuid)
+        member_count += 1
+        base_pay += breakdown["base_pay"]
+        deduction += breakdown["deduction"]
+        total += breakdown["total"]
+        missed_count += breakdown["missed_count"]
+        posted_count += breakdown["posted_count"]
+        if breakdown["total"] > 0:
+            earning_member_count += 1
+        if breakdown["missed_count"]:
+            missed_member_count += 1
+
+    return {
+        "member_count": member_count,
+        "earning_member_count": earning_member_count,
+        "missed_member_count": missed_member_count,
+        "base_pay": base_pay,
+        "posted_count": posted_count,
+        "missed_count": missed_count,
+        "deduction": deduction,
+        "total": total,
+    }

@@ -36,7 +36,7 @@ class BannerViewSet(ReadOnlyModelViewSet):
 
         banner = models.Banner.objects.create(**serializer.validated_data)
 
-        data = self.serializer_class(banner).data
+        data = self.serializer_class(banner, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.EditBannerSerializer)
@@ -61,7 +61,7 @@ class BannerViewSet(ReadOnlyModelViewSet):
 
         banner.update(**serializer.validated_data)
 
-        data = self.serializer_class(banner).data
+        data = self.serializer_class(banner, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.EditBannerSerializer)
@@ -84,7 +84,7 @@ class BannerViewSet(ReadOnlyModelViewSet):
 
         banner.archive()
 
-        data = self.serializer_class(banner).data
+        data = self.serializer_class(banner, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
 
@@ -111,7 +111,7 @@ class GuideViewSet(ReadOnlyModelViewSet):
 
         guide = models.Guide.objects.create(**serializer.validated_data)
 
-        data = self.serializer_class(guide).data
+        data = self.serializer_class(guide, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.EditGuideSerializer)
@@ -136,7 +136,7 @@ class GuideViewSet(ReadOnlyModelViewSet):
 
         guide.update(**serializer.validated_data)
 
-        data = self.serializer_class(guide).data
+        data = self.serializer_class(guide, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.EditGuideSerializer)
@@ -159,7 +159,7 @@ class GuideViewSet(ReadOnlyModelViewSet):
 
         guide.archive()
 
-        data = self.serializer_class(guide).data
+        data = self.serializer_class(guide, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
 
@@ -193,7 +193,7 @@ class TermsAndConditionsViewSet(ReadOnlyModelViewSet):
                 item_id=serializer.validated_data["category"],
             ).get_response()
 
-        data = self.serializer_class(terms).data
+        data = self.serializer_class(terms, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.EditTermsAndConditionsSerializer)
@@ -215,7 +215,7 @@ class TermsAndConditionsViewSet(ReadOnlyModelViewSet):
 
         terms.update(**serializer.validated_data)
 
-        data = self.serializer_class(terms).data
+        data = self.serializer_class(terms, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.EditTermsAndConditionsSerializer)
@@ -251,7 +251,9 @@ class ContentViewSet(ReadOnlyModelViewSet):
             queryset = queryset.filter(location=location)
         queryset = queryset.order_by("location", "ordering", "created")
 
-        data = serializers_get.GuideSerializer(queryset, many=True).data
+        data = serializers_get.GuideSerializer(
+            queryset, many=True, context={"request": self.request},
+        ).data
         return responses.SuccessResponse(data=data).get_response()
 
     @action(detail=False, methods=["get"], url_path="terms")
@@ -262,6 +264,6 @@ class ContentViewSet(ReadOnlyModelViewSet):
             queryset = queryset.filter(category=category)
 
         data = serializers_get.TermsAndConditionsSerializer(
-            queryset, many=True
+            queryset, many=True, context={"request": self.request},
         ).data
         return responses.SuccessResponse(data=data).get_response()

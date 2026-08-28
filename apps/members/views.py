@@ -14,7 +14,7 @@ class ProfileView(GenericAPIView):
 
     def get(self, request, *args, **kwargs):
         member = request.user.member
-        data = self.serializer_class(member).data
+        data = self.serializer_class(member, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.EditProfileSerializer)
@@ -28,7 +28,7 @@ class ProfileView(GenericAPIView):
         member = request.user.member
         member.update(**serializer.validated_data)
 
-        data = self.serializer_class(member).data
+        data = self.serializer_class(member, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
 
@@ -69,5 +69,5 @@ class LoginAuditView(GenericAPIView):
         ).order_by("-created")
 
         page = self.paginate_queryset(queryset)
-        serializer = self.serializer_class(page, many=True)
+        serializer = self.serializer_class(page, many=True, context={"request": self.request})
         return self.get_paginated_response(serializer.data)

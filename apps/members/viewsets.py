@@ -84,7 +84,7 @@ class MemberViewSet(ReadOnlyModelViewSet):
                 error_message="Phone number or email already exists",
             ).get_response()
 
-        data = serializers_get.MemberSerializer(member).data
+        data = serializers_get.MemberSerializer(member, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.EditMemberSerializer)
@@ -116,7 +116,7 @@ class MemberViewSet(ReadOnlyModelViewSet):
                 error_message="Phone number or email already exists",
             ).get_response()
 
-        data = serializers_get.MemberSerializer(member).data
+        data = serializers_get.MemberSerializer(member, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.EditMemberSerializer)
@@ -144,7 +144,7 @@ class MemberViewSet(ReadOnlyModelViewSet):
         user.set_password(validated_data["password"])
         user.save()
 
-        data = serializers_get.MemberSerializer(member).data
+        data = serializers_get.MemberSerializer(member, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
     @action(detail=True, methods=["patch"])
@@ -164,7 +164,7 @@ class MemberViewSet(ReadOnlyModelViewSet):
         member.archive()
         member.user.archive()
 
-        data = serializers_get.MemberSerializer(member).data
+        data = serializers_get.MemberSerializer(member, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
 
@@ -204,7 +204,7 @@ class BankDetailViewSet(ReadOnlyModelViewSet):
             member=member, **validated_data
         )
 
-        data = self.serializer_class(bank_detail).data
+        data = self.serializer_class(bank_detail, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.BankDetailSerializer)
@@ -237,7 +237,7 @@ class BankDetailViewSet(ReadOnlyModelViewSet):
 
         bank_detail.update(**validated_data)
 
-        data = self.serializer_class(bank_detail).data
+        data = self.serializer_class(bank_detail, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.BankDetailSerializer)
@@ -262,7 +262,7 @@ class BankDetailViewSet(ReadOnlyModelViewSet):
 
         bank_detail.archive()
 
-        data = self.serializer_class(bank_detail).data
+        data = self.serializer_class(bank_detail, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
 
@@ -301,7 +301,7 @@ class PlatformAccountViewSet(ReadOnlyModelViewSet):
                 item_key="Platform", item_id=validated_data["platform"],
             ).get_response()
 
-        data = self.serializer_class(platform_account).data
+        data = self.serializer_class(platform_account, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.PlatformAccountSerializer)
@@ -324,7 +324,7 @@ class PlatformAccountViewSet(ReadOnlyModelViewSet):
 
         platform_account.update(**validated_data)
 
-        data = self.serializer_class(platform_account).data
+        data = self.serializer_class(platform_account, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.PlatformAccountSerializer)
@@ -344,5 +344,5 @@ class PlatformAccountViewSet(ReadOnlyModelViewSet):
 
         platform_account.archive()
 
-        data = self.serializer_class(platform_account).data
+        data = self.serializer_class(platform_account, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
