@@ -4,23 +4,36 @@ from apps.members import models
 
 
 class BankDetailSerializer(serializers.ModelSerializer):
-    bank = serializers.CharField(source="get_bank_display")
-    bank_code = serializers.IntegerField(source="bank")
 
     class Meta:
         model = models.BankDetail
         fields = [
             "uuid",
             "bank",
-            "bank_code",
             "account_holder_name",
             "account_number",
             "is_primary",
         ]
 
 
+class AdminBankDetailSerializer(BankDetailSerializer):
+    """What an admin sees when checking who to pay."""
+
+    member = serializers.CharField(source="member.full_name")
+    member_uuid = serializers.UUIDField(source="member.uuid")
+    username = serializers.CharField(source="member.user.username")
+
+    class Meta(BankDetailSerializer.Meta):
+        fields = BankDetailSerializer.Meta.fields + [
+            "member",
+            "member_uuid",
+            "username",
+            "created",
+            "modified",
+        ]
+
+
 class PlatformAccountSerializer(serializers.ModelSerializer):
-    platform = serializers.CharField(source="get_platform_display")
 
     class Meta:
         model = models.PlatformAccount
@@ -49,7 +62,6 @@ class LoginAuditSerializer(serializers.ModelSerializer):
 
 class MemberSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username")
-    status = serializers.CharField(source="get_status_display")
     last_login = serializers.DateTimeField(source="user.last_login")
 
     class Meta:

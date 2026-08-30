@@ -7,7 +7,6 @@ class PayoutSerializer(serializers.ModelSerializer):
     member = serializers.CharField(source="member.full_name")
     member_uuid = serializers.UUIDField(source="member.uuid")
     status = serializers.IntegerField()
-    status_display = serializers.CharField()
 
     class Meta:
         model = models.Payout
@@ -19,7 +18,6 @@ class PayoutSerializer(serializers.ModelSerializer):
             "amount",
             "note",
             "status",
-            "status_display",
             "paid_at",
             "created",
         ]
@@ -30,7 +28,7 @@ class EarningsJobSerializer(serializers.Serializer):
     company = serializers.CharField()
     job_title = serializers.CharField()
     payment_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
-    payment_period = serializers.CharField()
+    payment_period = serializers.IntegerField()
     cycles = serializers.IntegerField()
     base_pay = serializers.DecimalField(max_digits=12, decimal_places=2)
     missed_count = serializers.IntegerField()
@@ -76,7 +74,7 @@ class StatisticsRowSerializer(serializers.Serializer):
     username = serializers.CharField()
     phone_number = serializers.CharField()
     email = serializers.CharField()
-    status = serializers.CharField()
+    status = serializers.IntegerField()
     job_count = serializers.IntegerField()
     base_pay = serializers.DecimalField(max_digits=12, decimal_places=2)
     posted_count = serializers.IntegerField()

@@ -239,3 +239,90 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
 
         data = self.serializer_class(task, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
+
+    def get_task(self, uuid):
+        return models.MemberTask.objects.filter(
+            uuid=uuid, member_job__member__uuid=self.kwargs.get("member_uuid"),
+        ).first()
+
+    @extend_schema(request=serializers_create.TaskContentSerializer)
+    @action(detail=True, methods=["post"])
+    def content(self, request, uuid=None, *args, **kwargs):
+        """The finished reel / photo files for this task."""
+        serializer = serializers_create.TaskContentSerializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except ValidationError as e:
+            return responses.InvalidDataError(details=e.detail).get_response()
+
+        task = self.get_task(uuid)
+        if task is None:
+            return responses.MissingItemError(
+                item_key=self.item_key, item_id=uuid,
+            ).get_response()
+
+        for upload in serializer.validated_data["files"]:
+            models.TaskFile.objects.create(
+                task=task,
+                file=upload,
+                media_type=helper_functions.media_type_for(upload.name),
+                original_name=upload.name[:255],
+                size=upload.size,
+            )
+
+        data = self.serializer_class(task, context={"request": self.request}).data
+        return responses.SuccessResponse(data=data).get_response()
+
+    @action(detail=True, methods=["patch"], url_path=r"content/(?P<file_uuid>[^/.]+)")
+    def remove_content(self, request, uuid=None, file_uuid=None, *args, **kwargs):
+        task = self.get_task(uuid)
+        if task is None:
+            return responses.MissingItemError(
+                item_key=self.item_key, item_id=uuid,
+            ).get_response()
+
+        task_file = task.files.filter(uuid=file_uuid).first()
+        if task_file is None:
+            return responses.MissingItemError(
+                item_key="Task File Id", item_id=file_uuid,
+            ).get_response()
+
+        if task_file.is_archived:
+            return responses.ItemAlreadyArchivedError(
+                item_key="Task File Id", item_id=file_uuid,
+            ).get_response()
+
+        task_file.archive()
+
+        data = self.serializer_class(task, context={"request": self.request}).data
+        return responses.SuccessResponse(data=data).get_response()
+
+    @extend_schema(request=serializers_create.TaskResultSerializer)
+    @action(detail=True, methods=["post", "patch"])
+    def result(self, request, uuid=None, *args, **kwargs):
+        """How the post performed.
+
+        No submission deadline here: views only accumulate after posting,
+        so this is filled in days later.
+        """
+        serializer = serializers_create.TaskResultSerializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except ValidationError as e:
+            return responses.InvalidDataError(details=e.detail).get_response()
+
+        task = self.get_task(uuid)
+        if task is None:
+            return responses.MissingItemError(
+                item_key=self.item_key, item_id=uuid,
+            ).get_response()
+
+        if not task.is_submitted:
+            return responses.BadRequestError(
+                details="Submit the task before reporting its result"
+            ).get_response()
+
+        task.submit_result(**serializer.validated_data)
+
+        data = self.serializer_class(task, context={"request": self.request}).data
+        return responses.SuccessResponse(data=data).get_response()

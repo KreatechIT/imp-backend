@@ -7,5 +7,6 @@ urlpatterns = [
     path("profile/change-password/", views.ChangePasswordView.as_view(), name="change-password"),
     path("profile/audit-log/", views.LoginAuditView.as_view(), name="audit-log"),
     path("profile/", include(routers.profile_router.urls)),
+    path("", include(routers.admin_member_router.urls)),
     path("", include(routers.member_router.urls)),
 ]

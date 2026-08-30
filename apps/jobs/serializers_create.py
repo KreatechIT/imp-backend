@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from apps.jobs import choices
+from core import encryption
 
 
 class CompanySerializer(serializers.Serializer):
@@ -161,3 +162,35 @@ class JobSettingsSerializer(serializers.Serializer):
     submission_grace_hours = serializers.IntegerField(required=False, min_value=0)
     requires_review = serializers.BooleanField(required=False)
     maintenance_mode = serializers.BooleanField(required=False)
+
+
+class TaskContentSerializer(serializers.Serializer):
+    """The finished reel / photo files for one task."""
+
+    files = serializers.ListField(
+        child=serializers.FileField(
+            validators=[encryption.validate_content_file_size],
+        ),
+        allow_empty=False,
+        max_length=20,
+    )
+
+
+class TaskResultSerializer(serializers.Serializer):
+    """How the post performed. Every number is optional."""
+
+    views = serializers.IntegerField(required=False, min_value=0, allow_null=True)
+    likes = serializers.IntegerField(required=False, min_value=0, allow_null=True)
+    comments = serializers.IntegerField(required=False, min_value=0, allow_null=True)
+    shares = serializers.IntegerField(required=False, min_value=0, allow_null=True)
+    metrics_screenshot = serializers.FileField(required=False, allow_null=True)
+
+    def validate(self, attrs):
+        if not any(
+            attrs.get(key) is not None
+            for key in ("views", "likes", "comments", "shares", "metrics_screenshot")
+        ):
+            raise serializers.ValidationError(
+                "At least one result figure is required."
+            )
+        return attrs

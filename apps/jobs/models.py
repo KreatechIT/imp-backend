@@ -23,6 +23,11 @@ def proof_upload_to(instance, filename):
     return f"proof/{uuid4().hex}{ext}"
 
 
+def content_upload_to(instance, filename):
+    ext = os.path.splitext(filename)[1].lower()
+    return f"content/{uuid4().hex}{ext}"
+
+
 class JobSettings(TimeStampedModel):
     singleton_enforcer = models.BooleanField(default=True, unique=True)
     default_deduction_per_miss = models.DecimalField(
@@ -327,6 +332,20 @@ class MemberTask(TimeStampedModel):
         related_name="reviewed_tasks",
     )
 
+    # how the post performed. Display only - nothing here feeds earnings
+    # or the leaderboard.
+    views = models.PositiveIntegerField(blank=True, null=True)
+    likes = models.PositiveIntegerField(blank=True, null=True)
+    comments = models.PositiveIntegerField(blank=True, null=True)
+    shares = models.PositiveIntegerField(blank=True, null=True)
+    metrics_screenshot = models.FileField(
+        blank=True,
+        null=True,
+        upload_to=proof_upload_to,
+        validators=[encryption.validate_file_size],
+    )
+    metrics_submitted_at = models.DateTimeField(blank=True, null=True)
+
     class Meta:
         constraints = [
             models.UniqueConstraint(
@@ -382,3 +401,62 @@ class MemberTask(TimeStampedModel):
         self.is_approved = is_approved
         self.reject_reason = reject_reason if not is_approved else None
         self.save()
+
+    @property
+    def has_result(self):
+        return self.metrics_submitted_at is not None
+
+    def submit_result(self, **metrics):
+        for key, value in metrics.items():
+            if value is not None:
+                setattr(self, key, value)
+        self.metrics_submitted_at = timezone.now()
+        self.save()
+
+
+class TaskFile(TimeStampedModel):
+    """One finished reel or photo handed to the campaign team.
+
+    Separate from MemberTask.proof_file, which is the bio screenshot:
+    proof shows the post went live, these are the deliverables themselves.
+    """
+
+    task = models.ForeignKey(
+        MemberTask,
+        verbose_name=_("Task"),
+        on_delete=models.CASCADE,
+        related_name="files",
+    )
+    file = models.FileField(
+        upload_to=content_upload_to,
+        validators=[encryption.validate_content_file_size],
+    )
+    media_type = models.IntegerField(
+        verbose_name=_("Media Type"),
+        choices=choices.TASK_FILE_MEDIA_TYPE_CHOICES,
+    )
+    original_name = models.CharField(
+        verbose_name=_("Original Name"),
+        max_length=255,
+        blank=True,
+        null=True,
+    )
+    size = models.PositiveBigIntegerField(default=0)
+    archived = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["created"]),
+            models.Index(fields=["media_type"]),
+        ]
+
+    def __str__(self):
+        return self.original_name or str(self.uuid)
+
+    def archive(self):
+        self.archived = timezone.now()
+        self.save()
+
+    @property
+    def is_archived(self):
+        return self.archived is not None

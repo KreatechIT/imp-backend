@@ -1,4 +1,5 @@
 import calendar
+import os
 from datetime import timedelta
 
 from django.db.models import Q
@@ -90,3 +91,12 @@ def ensure_today_tasks(member_uuid):
         .select_related("member_job__job__company", "requirement")
         .order_by("member_job__job__company__name", "requirement__content_type")
     )
+
+
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".m4v", ".webm"}
+
+
+def media_type_for(filename):
+    """Video or photo, from the file extension."""
+    ext = os.path.splitext(filename or "")[1].lower()
+    return 1 if ext in VIDEO_EXTENSIONS else 2

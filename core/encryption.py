@@ -1,5 +1,6 @@
 import os
 
+from PIL import Image, UnidentifiedImageError
 from cryptography.fernet import Fernet
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -32,6 +33,40 @@ def validate_file_size(value):
     limit = 10 * 1024 * 1024
     if value.size > limit:
         raise ValidationError("The maximum file size allowed is 10MB.")
+
+
+def validate_content_file_size(value):
+    """Finished reels are far bigger than an avatar or a banner."""
+    limit = 200 * 1024 * 1024
+    if value.size > limit:
+        raise ValidationError("The maximum file size allowed is 200MB.")
+
+
+def validate_transparent_image(value):
+    """Reject a frame with no see-through area.
+
+    A frame is an overlay. One saved without an alpha channel covers the
+    whole video, which is the mistake worth catching at upload rather than
+    after an influencer has already exported with it.
+    """
+    try:
+        value.seek(0)
+        image = Image.open(value)
+        mode, info = image.mode, image.info
+    except (UnidentifiedImageError, OSError):
+        value.seek(0)
+        raise ValidationError("The frame must be a valid image file.")
+
+    value.seek(0)
+
+    has_alpha = mode in ("RGBA", "LA") or (
+        mode == "P" and "transparency" in info
+    )
+    if not has_alpha:
+        raise ValidationError(
+            "The frame must have a transparent area. An image without "
+            "transparency would cover the whole video."
+        )
 
 
 def build_image_url(image_str):

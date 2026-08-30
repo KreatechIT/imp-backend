@@ -57,3 +57,8 @@ MEMBER_TASK_STATUS_CHOICES = (
     (4, _("REJECTED")),
     (5, _("MISSED")),
 )
+
+TASK_FILE_MEDIA_TYPE_CHOICES = (
+    (1, _("VIDEO")),
+    (2, _("PHOTO")),
+)

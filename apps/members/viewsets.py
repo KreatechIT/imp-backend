@@ -268,6 +268,21 @@ class BankDetailViewSet(ReadOnlyModelViewSet):
         return responses.SuccessResponse(data=data).get_response()
 
 
+class MemberBankDetailViewSet(ReadOnlyModelViewSet):
+    """Admin view of one member's bank accounts, for paying them."""
+
+    serializer_class = serializers_get.AdminBankDetailSerializer
+    permission_classes = [permissions.IsAdmin]
+    pagination_class = StandardPagination
+    lookup_field = "uuid"
+    item_key = "Bank Detail Id"
+
+    def get_queryset(self):
+        return models.BankDetail.objects.filter(
+            member__uuid=self.kwargs.get("member_uuid"), archived=None,
+        ).select_related("member__user").order_by("-is_primary", "-created")
+
+
 class PlatformAccountViewSet(ReadOnlyModelViewSet):
     serializer_class = serializers_get.PlatformAccountSerializer
     permission_classes = [permissions.IsMember]

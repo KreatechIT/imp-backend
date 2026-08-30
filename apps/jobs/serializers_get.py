@@ -4,7 +4,6 @@ from apps.jobs import models
 
 
 class CompanySerializer(serializers.ModelSerializer):
-    status = serializers.CharField(source="get_status_display")
     total_jobs = serializers.SerializerMethodField()
 
     def get_total_jobs(self, obj):
@@ -24,8 +23,6 @@ class CompanySerializer(serializers.ModelSerializer):
 
 
 class JobRequirementSerializer(serializers.ModelSerializer):
-    platform = serializers.CharField(source="get_platform_display")
-    content_type = serializers.CharField(source="get_content_type_display")
 
     class Meta:
         model = models.JobRequirement
@@ -41,9 +38,6 @@ class JobSerializer(serializers.ModelSerializer):
     company = serializers.CharField(source="company.name")
     company_uuid = serializers.UUIDField(source="company.uuid")
     company_logo = serializers.ImageField(source="company.logo")
-    recurrence = serializers.CharField(source="get_recurrence_display")
-    payment_period = serializers.CharField(source="get_payment_period_display")
-    status = serializers.CharField(source="get_status_display")
     is_live = serializers.BooleanField()
     requirements = serializers.SerializerMethodField()
 
@@ -84,12 +78,13 @@ class MemberJobSerializer(serializers.ModelSerializer):
     payment_amount = serializers.DecimalField(
         source="job.payment_amount", max_digits=12, decimal_places=2,
     )
-    payment_period = serializers.CharField(source="job.get_payment_period_display")
-    recurrence = serializers.CharField(source="job.get_recurrence_display")
-    status = serializers.CharField(source="get_status_display")
-    affiliate_link_status = serializers.CharField(
-        source="get_affiliate_link_status_display",
-    )
+    payment_period = serializers.IntegerField(source="job.payment_period")
+    recurrence = serializers.IntegerField(source="job.recurrence")
+    has_frames = serializers.SerializerMethodField()
+
+    def get_has_frames(self, obj):
+        """Drives the FRAME READY badge on the frame editor's job picker."""
+        return obj.job.frames.filter(status=1, archived=None).exists()
 
     class Meta:
         model = models.MemberJob
@@ -108,8 +103,23 @@ class MemberJobSerializer(serializers.ModelSerializer):
             "status",
             "affiliate_link",
             "affiliate_link_status",
+            "has_frames",
             "joined",
             "completed",
+            "created",
+        ]
+
+
+class TaskFileSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = models.TaskFile
+        fields = [
+            "uuid",
+            "file",
+            "media_type",
+            "original_name",
+            "size",
             "created",
         ]
 
@@ -120,11 +130,17 @@ class MemberTaskSerializer(serializers.ModelSerializer):
     company = serializers.CharField(source="member_job.job.company.name")
     job_title = serializers.CharField(source="member_job.job.title")
     member_job_uuid = serializers.UUIDField(source="member_job.uuid")
-    platform = serializers.CharField(source="requirement.get_platform_display")
-    content_type = serializers.CharField(source="requirement.get_content_type_display")
+    platform = serializers.IntegerField(source="requirement.platform")
+    content_type = serializers.IntegerField(source="requirement.content_type")
     quantity = serializers.IntegerField(source="requirement.quantity")
     status = serializers.IntegerField()
-    status_display = serializers.CharField()
+    files = serializers.SerializerMethodField()
+
+    def get_files(self, obj):
+        queryset = obj.files.filter(archived=None).order_by("created")
+        return TaskFileSerializer(
+            queryset, many=True, context=self.context,
+        ).data
 
     class Meta:
         model = models.MemberTask
@@ -142,7 +158,6 @@ class MemberTaskSerializer(serializers.ModelSerializer):
             "period_start",
             "period_end",
             "status",
-            "status_display",
             "proof_link",
             "proof_file",
             "note",
@@ -150,6 +165,14 @@ class MemberTaskSerializer(serializers.ModelSerializer):
             "reviewed_at",
             "is_approved",
             "reject_reason",
+            "files",
+            "views",
+            "likes",
+            "comments",
+            "shares",
+            "metrics_screenshot",
+            "metrics_submitted_at",
+            "has_result",
         ]
 
 
@@ -165,10 +188,6 @@ class AvailableJobSerializer(JobSerializer):
 
 
 class JobSettingsSerializer(serializers.ModelSerializer):
-    default_payment_period = serializers.CharField(
-        source="get_default_payment_period_display",
-    )
-
     class Meta:
         model = models.JobSettings
         fields = [
