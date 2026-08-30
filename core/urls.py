@@ -19,7 +19,6 @@ urlpatterns = [
     path("jobs/", include(("apps.jobs.urls", "jobs"), namespace="jobs")),
     path("front-view/", include(("apps.front_view.urls", "front-view"), namespace="front-view")),
     path("earnings/", include(("apps.earnings.urls", "earnings"), namespace="earnings")),
-    path("leaderboard/", include(("apps.leaderboard.urls", "leaderboard"), namespace="leaderboard")),
 
     # swagger urls
     path("schema/", SpectacularAPIView.as_view(), name="schema"),
