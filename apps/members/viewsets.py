@@ -207,9 +207,11 @@ class BankDetailViewSet(ReadOnlyModelViewSet):
         data = self.serializer_class(bank_detail, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
 
-    @extend_schema(request=serializers_create.BankDetailSerializer)
+    @extend_schema(request=serializers_create.EditBankDetailSerializer)
     def update(self, request, uuid=None, *args, **kwargs):
-        serializer = serializers_create.BankDetailSerializer(data=request.data)
+        serializer = serializers_create.EditBankDetailSerializer(
+            data=request.data
+        )
         try:
             serializer.is_valid(raise_exception=True)
         except ValidationError as e:
@@ -240,7 +242,7 @@ class BankDetailViewSet(ReadOnlyModelViewSet):
         data = self.serializer_class(bank_detail, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
-    @extend_schema(request=serializers_create.BankDetailSerializer)
+    @extend_schema(request=serializers_create.EditBankDetailSerializer)
     def partial_update(self, request, uuid=None, *args, **kwargs):
         return self.update(request, uuid=uuid, *args, **kwargs)
 
@@ -304,9 +306,11 @@ class PlatformAccountViewSet(ReadOnlyModelViewSet):
         data = self.serializer_class(platform_account, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
 
-    @extend_schema(request=serializers_create.PlatformAccountSerializer)
+    @extend_schema(request=serializers_create.EditPlatformAccountSerializer)
     def update(self, request, uuid=None, *args, **kwargs):
-        serializer = serializers_create.PlatformAccountSerializer(data=request.data)
+        serializer = serializers_create.EditPlatformAccountSerializer(
+            data=request.data
+        )
         try:
             serializer.is_valid(raise_exception=True)
         except ValidationError as e:
@@ -327,7 +331,7 @@ class PlatformAccountViewSet(ReadOnlyModelViewSet):
         data = self.serializer_class(platform_account, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
-    @extend_schema(request=serializers_create.PlatformAccountSerializer)
+    @extend_schema(request=serializers_create.EditPlatformAccountSerializer)
     def partial_update(self, request, uuid=None, *args, **kwargs):
         return self.update(request, uuid=uuid, *args, **kwargs)
 

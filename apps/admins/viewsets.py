@@ -45,15 +45,15 @@ class AdminViewSet(ReadOnlyModelViewSet):
         try:
             with transaction.atomic():
                 user = UserModel.objects.create(username=username)
+                user.set_password(password)
+                user.save()
+                admin = models.Admin.objects.create(
+                    user=user, **validated_data
+                )
         except IntegrityError:
             return responses.ExistingDataError(
                 item_key="Username", item_id=username,
             ).get_response()
-
-        user.set_password(password)
-        user.save()
-
-        admin = models.Admin.objects.create(user=user, **validated_data)
 
         data = self.serializer_class(admin, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()

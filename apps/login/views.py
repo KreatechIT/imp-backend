@@ -33,7 +33,7 @@ class AdminAccessTokenView(TokenObtainPairView):
         admin = Admin.objects.get(user=serializer.user)
         update_last_login(None, serializer.user)
 
-        data = AdminSerializer(admin).data
+        data = AdminSerializer(admin, context={"request": request}).data
         data["access"] = validated_data["access"]
         data["refresh"] = validated_data["refresh"]
         data["role"] = "ADMIN"
@@ -69,7 +69,9 @@ class MemberAccessTokenView(TokenObtainPairView):
             device=validated_data.get("device"),
         )
 
-        data = MemberProfileSerializer(member).data
+        data = MemberProfileSerializer(
+            member, context={"request": request},
+        ).data
         data["access"] = validated_data["access"]
         data["refresh"] = validated_data["refresh"]
         data["role"] = "MEMBER"

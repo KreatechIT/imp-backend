@@ -33,6 +33,16 @@ class JobRequirementSerializer(serializers.Serializer):
     quantity = serializers.IntegerField(required=False, min_value=1, default=1)
 
 
+class EditJobRequirementSerializer(serializers.Serializer):
+    platform = serializers.ChoiceField(
+        choices=choices.PLATFORM_CHOICES, required=False,
+    )
+    content_type = serializers.ChoiceField(
+        choices=choices.CONTENT_TYPE_CHOICES, required=False,
+    )
+    quantity = serializers.IntegerField(required=False, min_value=1)
+
+
 class JobSerializer(serializers.Serializer):
     company_uuid = serializers.UUIDField(required=True)
     title = serializers.CharField(required=True)

@@ -258,9 +258,11 @@ class JobRequirementViewSet(ReadOnlyModelViewSet):
         data = self.serializer_class(requirement, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
 
-    @extend_schema(request=serializers_create.JobRequirementSerializer)
+    @extend_schema(request=serializers_create.EditJobRequirementSerializer)
     def update(self, request, uuid=None, *args, **kwargs):
-        serializer = serializers_create.JobRequirementSerializer(data=request.data)
+        serializer = serializers_create.EditJobRequirementSerializer(
+            data=request.data
+        )
         try:
             serializer.is_valid(raise_exception=True)
         except ValidationError as e:
@@ -279,6 +281,10 @@ class JobRequirementViewSet(ReadOnlyModelViewSet):
 
         data = self.serializer_class(requirement, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
+
+    @extend_schema(request=serializers_create.EditJobRequirementSerializer)
+    def partial_update(self, request, uuid=None, *args, **kwargs):
+        return self.update(request, uuid=uuid, *args, **kwargs)
 
     @action(detail=True, methods=["patch"])
     def archive(self, request, uuid=None, *args, **kwargs):
@@ -369,6 +375,11 @@ class SubmissionViewSet(ReadOnlyModelViewSet):
                 details="Task has not been submitted"
             ).get_response()
 
+        if task.reviewed_at:
+            return responses.BadRequestError(
+                details="Task has already been reviewed"
+            ).get_response()
+
         task.review(admin=request.user.admin, is_approved=True)
 
         data = self.serializer_class(task, context={"request": self.request}).data
@@ -392,6 +403,11 @@ class SubmissionViewSet(ReadOnlyModelViewSet):
         if task.submitted_at is None:
             return responses.BadRequestError(
                 details="Task has not been submitted"
+            ).get_response()
+
+        if task.reviewed_at:
+            return responses.BadRequestError(
+                details="Task has already been reviewed"
             ).get_response()
 
         task.review(

@@ -92,3 +92,20 @@ class PlatformAccountSerializer(serializers.Serializer):
     platform = serializers.ChoiceField(choices=choices.PLATFORM_CHOICES, required=True)
     handle = serializers.CharField(required=True)
     profile_url = serializers.URLField(required=False, allow_null=True, allow_blank=True)
+
+
+class EditBankDetailSerializer(serializers.Serializer):
+    bank = serializers.ChoiceField(choices=choices.BANK_CHOICES, required=False)
+    account_holder_name = serializers.CharField(required=False)
+    account_number = serializers.CharField(required=False)
+    is_primary = serializers.BooleanField(required=False)
+
+
+class EditPlatformAccountSerializer(serializers.Serializer):
+    platform = serializers.ChoiceField(
+        choices=choices.PLATFORM_CHOICES, required=False,
+    )
+    handle = serializers.CharField(required=False)
+    profile_url = serializers.URLField(
+        required=False, allow_null=True, allow_blank=True,
+    )
