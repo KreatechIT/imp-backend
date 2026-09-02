@@ -14,7 +14,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('admins', '0001_initial'),
+        ('crmadmin', '0001_initial'),
         ('members', '0001_initial'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
@@ -135,7 +135,7 @@ class Migration(migrations.Migration):
                 ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(app_label)s_%(class)s_created_user', to=settings.AUTH_USER_MODEL)),
                 ('member_job', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='tasks', to='jobs.memberjob', verbose_name='Member Job')),
                 ('requirement', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='tasks', to='jobs.jobrequirement', verbose_name='Requirement')),
-                ('reviewed_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='reviewed_tasks', to='admins.admin', verbose_name='Reviewed By')),
+                ('reviewed_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='reviewed_tasks', to='crmadmin.admin', verbose_name='Reviewed By')),
             ],
         ),
         migrations.CreateModel(

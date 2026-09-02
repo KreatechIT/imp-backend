@@ -1,4 +1,4 @@
-from apps.admins import models
+from apps.crmadmin import models
 from base.base_test_classes import BaseAPITestCase
 from base.models import UserModel
 

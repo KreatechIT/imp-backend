@@ -37,7 +37,7 @@ INSTALLED_APPS = [
     "base",
 
     "apps.login",
-    "apps.admins",
+    "apps.crmadmin",
     "apps.members",
     "apps.jobs",
     "apps.front_view",

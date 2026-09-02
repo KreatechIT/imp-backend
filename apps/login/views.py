@@ -3,8 +3,8 @@ from rest_framework.serializers import ValidationError
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from apps.admins.models import Admin
-from apps.admins.serializers_get import AdminSerializer
+from apps.crmadmin.models import Admin
+from apps.crmadmin.serializers_get import AdminSerializer
 from apps.login import serializers
 from apps.members.models import LoginAudit, Member
 from apps.members.serializers_get import MemberProfileSerializer

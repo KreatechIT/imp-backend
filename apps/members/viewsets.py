@@ -283,6 +283,21 @@ class MemberBankDetailViewSet(ReadOnlyModelViewSet):
         ).select_related("member__user").order_by("-is_primary", "-created")
 
 
+class MemberLoginAuditViewSet(ReadOnlyModelViewSet):
+    """Admin view of one member's login history, latest first."""
+
+    serializer_class = serializers_get.LoginAuditSerializer
+    permission_classes = [permissions.IsAdmin]
+    pagination_class = StandardPagination
+    lookup_field = "uuid"
+    item_key = "Login Audit Id"
+
+    def get_queryset(self):
+        return models.LoginAudit.objects.filter(
+            member__uuid=self.kwargs.get("member_uuid"),
+        ).order_by("-created")
+
+
 class PlatformAccountViewSet(ReadOnlyModelViewSet):
     serializer_class = serializers_get.PlatformAccountSerializer
     permission_classes = [permissions.IsMember]

@@ -1,4 +1,4 @@
-from apps.admins import models as admin_models
+from apps.crmadmin import models as admin_models
 from apps.members import models
 from base.base_test_classes import BaseAPITestCase
 from base.models import UserModel
@@ -188,13 +188,3 @@ class MemberProfileAPITest(BaseAPITestCase):
         )
         assert response.status_code == 400
 
-    def test_audit_log(self):
-        self.authenticate()
-        models.LoginAudit.objects.create(
-            member=self.member, ip_address="127.0.0.1", device="Chrome",
-        )
-        response = self.client.get(self.url + "/audit-log/")
-        data = response.json()
-        assert response.status_code == 200
-        assert data["count"] == 1
-        assert data["results"][0]["device"] == "Chrome"

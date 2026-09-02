@@ -12,7 +12,7 @@ urlpatterns = [
     path("login/", include(("apps.login.urls", "login"), namespace="login")),
 
     # apps urls
-    path("admins/", include(("apps.admins.urls", "admins"), namespace="admins")),
+    path("admins/", include(("apps.crmadmin.urls", "admins"), namespace="admins")),
     path("members/", include(("apps.jobs.member_urls", "member-jobs"), namespace="member-jobs")),
     path("members/", include(("apps.earnings.member_urls", "member-earnings"), namespace="member-earnings")),
     path("members/", include(("apps.frames.member_urls", "member-frames"), namespace="member-frames")),

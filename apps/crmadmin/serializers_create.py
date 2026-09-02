@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.admins import choices
+from apps.crmadmin import choices
 
 
 class AdminSerializer(serializers.Serializer):
@@ -27,6 +27,18 @@ class EditAdminSerializer(serializers.Serializer):
         choices=choices.ADMIN_STATUS_CHOICES, required=False,
     )
     profile_picture = serializers.ImageField(required=False, allow_null=True)
+
+
+class DashboardKpiQuerySerializer(serializers.Serializer):
+    from_date = serializers.DateField(required=True)
+    to_date = serializers.DateField(required=True)
+
+    def validate(self, attrs):
+        if attrs["to_date"] < attrs["from_date"]:
+            raise serializers.ValidationError({
+                "to_date": "to_date cannot be before from_date."
+            })
+        return attrs
 
 
 class ResetAdminPasswordSerializer(serializers.Serializer):

@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from sorl.thumbnail import ImageField
 
-from apps.admins.models import Admin
+from apps.crmadmin.models import Admin
 from apps.jobs import choices
 from apps.members.models import Member
 from base.models import TimeStampedModel

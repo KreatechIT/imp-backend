@@ -1,4 +1,4 @@
-from apps.jobs.viewsets.admin import (
+from apps.jobs.viewsets.crmview import (
     CompanyViewSet,
     JobRequirementViewSet,
     JobViewSet,

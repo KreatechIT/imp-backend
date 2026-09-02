@@ -18,10 +18,11 @@
 
 ## 3. Changelog
 
-**Current version: 1.0** — 2026-08-31
+**Current version: 1.1** — 2026-09-02
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.1 | 2026-09-02 | Added CMS dashboard KPI. Submissions: added `pending/` / `approved/` / `rejected/` shortcuts and `from_date` / `to_date` / `search` filters. Removed `GET /members/profile/audit-log/` (login history is no longer exposed via API). (Internally the `admins` Django app was renamed to `crmadmin` — no API path changed.) 85 endpoints. |
 | 1.0 | 2026-08-31 | Initial release. Covers auth, admin users, activity log, members, companies, jobs, job requirements, frames, submissions, member job applications, job settings, payouts, earnings statistics, KPI, banners, guides, terms, member profile, bank details, platform accounts, job board, tasks, earnings, missed and app content. 82 endpoints. |
 
 ## 4. Conventions
@@ -196,7 +197,33 @@ Everything below requires an **admin** token unless noted.
 { "uuid": "uuid", "datetime": "datetime", "admin": "username", "activity": "string" }
 ```
 
-## 8. Members — `/members/`
+## 8. Dashboard KPI — `/admins/dashboard/kpi/`
+
+The 4 tiles on the CMS dashboard.
+
+| Method | Path |
+|---|---|
+| GET | `/admins/dashboard/kpi/` |
+
+**Query**
+
+| Param | Type | Required | Notes |
+|---|---|---|---|
+| `from_date` | date | yes | `YYYY-MM-DD` |
+| `to_date` | date | yes | `YYYY-MM-DD`, must be ≥ `from_date` |
+
+`total_influencers`, `active_campaigns` and `pending_submissions` are a live snapshot — **not** scoped to the date range. `approved_submissions` is the only tile scoped to `[from_date, to_date]`: submissions reviewed and approved in that window.
+
+```json
+{
+  "total_influencers": 0,
+  "active_campaigns": 0,
+  "pending_submissions": 0,
+  "approved_submissions": 0
+}
+```
+
+## 9. Members — `/members/`
 
 | Method | Path |
 |---|---|
@@ -263,7 +290,7 @@ Everything below requires an **admin** token unless noted.
 }
 ```
 
-## 9. Member bank details (read-only) — `/members/{member_uuid}/bank-details/`
+## 10. Member bank details (read-only) — `/members/{member_uuid}/bank-details/`
 
 | Method | Path |
 |---|---|
@@ -279,7 +306,7 @@ Everything below requires an **admin** token unless noted.
 }
 ```
 
-## 10. Companies — `/jobs/companies/`
+## 11. Companies — `/jobs/companies/`
 
 | Method | Path |
 |---|---|
@@ -310,7 +337,7 @@ All fields optional on PUT / PATCH.
 }
 ```
 
-## 11. Jobs — `/jobs/postings/`
+## 12. Jobs — `/jobs/postings/`
 
 | Method | Path |
 |---|---|
@@ -360,7 +387,7 @@ All fields optional on PUT / PATCH.
 
 `is_live` = status `2` **and** not archived **and** now is between `start_date` and `end_date`.
 
-## 12. Job requirements — `/jobs/postings/{job_uuid}/requirements/`
+## 13. Job requirements — `/jobs/postings/{job_uuid}/requirements/`
 
 | Method | Path |
 |---|---|
@@ -382,7 +409,7 @@ All fields optional on PUT / PATCH.
 { "uuid": "uuid", "platform": 1, "content_type": 1, "quantity": 1 }
 ```
 
-## 13. Frames — `/jobs/postings/{job_uuid}/frames/`
+## 14. Frames — `/jobs/postings/{job_uuid}/frames/`
 
 | Method | Path |
 |---|---|
@@ -417,23 +444,30 @@ All optional on PUT / PATCH. A non-transparent image returns **400**.
 }
 ```
 
-## 14. Submissions — `/jobs/submissions/`
+## 15. Submissions — `/jobs/submissions/`
 
 | Method | Path |
 |---|---|
 | GET | `/jobs/submissions/` |
+| GET | `/jobs/submissions/pending/` |
+| GET | `/jobs/submissions/approved/` |
+| GET | `/jobs/submissions/rejected/` |
 | GET | `/jobs/submissions/{uuid}/` |
 | PATCH | `/jobs/submissions/{uuid}/approve/` |
 | PATCH | `/jobs/submissions/{uuid}/reject/` |
+
+`pending/`, `approved/`, `rejected/` are `/jobs/submissions/` pre-filtered to `status = 2` / `3` / `4` respectively — every query param below still applies on them, `status` is just ignored there (fixed by the path).
 
 **Query**
 
 | Param | Notes |
 |---|---|
-| `status` | `1` pending (not submitted, period still open) · `2` awaiting review · `3` approved · `4` rejected · `5` missed (not submitted, period closed). Omitted → every submitted task. |
+| `status` | `1` pending (not submitted, period still open) · `2` awaiting review · `3` approved · `4` rejected · `5` missed (not submitted, period closed). Omitted → every submitted task. Ignored on `/pending/`, `/approved/`, `/rejected/`. |
 | `job_uuid` | |
 | `member_uuid` | |
 | `period_key` | exact |
+| `from_date` / `to_date` | filters on `submitted_at`'s date; either may be given alone |
+| `search` | fuzzy match on influencer full name, username, phone number |
 | `page`, `page_size` | |
 
 **PATCH approve** — no body. **400** if not submitted, or already reviewed.
@@ -463,7 +497,7 @@ All optional on PUT / PATCH. A non-transparent image returns **400**.
 }
 ```
 
-## 15. Member job applications — `/members/{member_uuid}/jobs/`
+## 16. Member job applications — `/members/{member_uuid}/jobs/`
 
 GET is open to any authenticated user; the write actions are **admin only** (a member calling them gets **400** `Can only be triggered by admins`).
 
@@ -505,7 +539,7 @@ GET is open to any authenticated user; the write actions are **admin only** (a m
 }
 ```
 
-## 16. Job settings — `/jobs/settings/`
+## 17. Job settings — `/jobs/settings/`
 
 Singleton. Created on first GET.
 
@@ -533,7 +567,7 @@ Singleton. Created on first GET.
 }
 ```
 
-## 17. Payouts — `/earnings/payouts/`
+## 18. Payouts — `/earnings/payouts/`
 
 | Method | Path |
 |---|---|
@@ -569,7 +603,7 @@ One payout per member per `period_key` → duplicate returns **400** `Data alrea
 }
 ```
 
-## 18. Earnings statistics — `/earnings/statistics/`
+## 19. Earnings statistics — `/earnings/statistics/`
 
 **GET**
 
@@ -603,7 +637,7 @@ One payout per member per `period_key` → duplicate returns **400** `Data alrea
 }
 ```
 
-## 19. Earnings KPI — `/earnings/kpi/`
+## 20. Earnings KPI — `/earnings/kpi/`
 
 **GET** — no params. Current month, all members.
 
@@ -615,7 +649,7 @@ One payout per member per `period_key` → duplicate returns **400** `Data alrea
 }
 ```
 
-## 20. Banners — `/front-view/banners/`
+## 21. Banners — `/front-view/banners/`
 
 | Method | Path |
 |---|---|
@@ -647,7 +681,7 @@ One payout per member per `period_key` → duplicate returns **400** `Data alrea
 }
 ```
 
-## 21. Guides — `/front-view/guides/`
+## 22. Guides — `/front-view/guides/`
 
 | Method | Path |
 |---|---|
@@ -671,7 +705,7 @@ One payout per member per `period_key` → duplicate returns **400** `Data alrea
   "content": "<p>html</p>", "ordering": 0, "modified": "datetime" }
 ```
 
-## 22. Terms & conditions — `/front-view/terms/`
+## 23. Terms & conditions — `/front-view/terms/`
 
 | Method | Path |
 |---|---|
@@ -699,7 +733,7 @@ PUT / PATCH accept `content` only.
 
 Requires a **member** token, except where marked. `{member_uuid}` is the logged-in member's own `uuid` (returned by the login response).
 
-## 23. Profile — `/members/profile/`
+## 24. Profile — `/members/profile/`
 
 | Method | Path |
 |---|---|
@@ -708,9 +742,9 @@ Requires a **member** token, except where marked. `{member_uuid}` is the logged-
 
 **PATCH** *(multipart if `profile_picture`)* — `full_name` (string, optional), `profile_picture` (file, optional).
 
-Response is the full member profile — see §8 `GET /members/{uuid}/`.
+Response is the full member profile — see §9 `GET /members/{uuid}/`.
 
-## 24. Change password — `/members/profile/change-password/`
+## 25. Change password — `/members/profile/change-password/`
 
 **PATCH**
 
@@ -721,15 +755,6 @@ Response is the full member profile — see §8 `GET /members/{uuid}/`.
 | `confirm_password` | string | yes — must equal `password` |
 
 **200** `{ "message": "Password updated" }` · **400** `Current password is incorrect`.
-
-## 25. Login history — `/members/profile/audit-log/`
-
-**GET** — paginated.
-
-```json
-{ "uuid": "uuid", "datetime": "datetime",
-  "ip_address": "string|null", "device": "string|null" }
-```
 
 ## 26. Own bank details — `/members/profile/bank-details/`
 
@@ -786,10 +811,10 @@ Duplicate platform → **400** `Data already exists`.
 
 Lists jobs with `status = 2` (ACTIVE) and not archived.
 
-**POST apply** — no body. **201** with the new member-job object (§15), `status = 1` APPLIED.
+**POST apply** — no body. **201** with the new member-job object (§16), `status = 1` APPLIED.
 **400** `Job is not open for applications` if the job is not live; **400** `Already applied to this job` on a repeat.
 
-Response is the job object (§11) plus:
+Response is the job object (§12) plus:
 
 ```json
 { "is_applied": false }
@@ -797,7 +822,7 @@ Response is the job object (§11) plus:
 
 ## 29. My jobs — `/members/{member_uuid}/jobs/`
 
-**GET** only for members — see §15 for the object and the `status` query param. The PATCH actions on this path are admin-only.
+**GET** only for members — see §16 for the object and the `status` query param. The PATCH actions on this path are admin-only.
 
 ## 30. Frames for a job — `/members/{member_uuid}/jobs/{job_uuid}/frames/`
 
@@ -810,7 +835,7 @@ Returns only frames with `status = 1` on a job the member holds with `status = 2
 
 **Query**: `media_type` (int — matches that type **and** `1` BOTH), `aspect_ratio` (int), `page`, `page_size`.
 
-Object as in §13.
+Object as in §14.
 
 ## 31. Tasks — `/members/{member_uuid}/tasks/`
 
@@ -858,7 +883,7 @@ Object as in §13.
 
 At least one field is required. **400** `Submit the task before reporting its result` if the task hasn't been submitted. No deadline on this endpoint.
 
-Every one of these returns the task object — see §14.
+Every one of these returns the task object — see §15.
 
 `status` is derived, not stored: reviewed → `3`/`4`; submitted → `2`; `period_end` in the past → `5` MISSED; otherwise `1` PENDING.
 
@@ -905,7 +930,7 @@ Every one of these returns the task object — see §14.
 | GET | `/members/{member_uuid}/payouts/` |
 | GET | `/members/{member_uuid}/payouts/{uuid}/` |
 
-Read-only. Object as in §17.
+Read-only. Object as in §18.
 
 ## 35. App content — `/front-view/content/`
 
@@ -918,6 +943,6 @@ Members only. The live, member-facing read of banners / guides / terms.
 | GET | `/front-view/content/guides/` | `location` (int, guide location) |
 | GET | `/front-view/content/terms/` | `category` (int, terms category) |
 
-`/content/` returns only banners whose `active_from` / `active_until` window contains now — paginated, object as in §20.
+`/content/` returns only banners whose `active_from` / `active_until` window contains now — paginated, object as in §21.
 
-`guides/` and `terms/` return **bare arrays**, not paginated — objects as in §21 and §22.
+`guides/` and `terms/` return **bare arrays**, not paginated — objects as in §22 and §23.

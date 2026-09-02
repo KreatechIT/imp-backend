@@ -33,6 +33,19 @@ class AdminBankDetailSerializer(BankDetailSerializer):
         ]
 
 
+class LoginAuditSerializer(serializers.ModelSerializer):
+    datetime = serializers.DateTimeField(source="created")
+
+    class Meta:
+        model = models.LoginAudit
+        fields = [
+            "uuid",
+            "datetime",
+            "ip_address",
+            "device",
+        ]
+
+
 class PlatformAccountSerializer(serializers.ModelSerializer):
 
     class Meta:
@@ -44,19 +57,6 @@ class PlatformAccountSerializer(serializers.ModelSerializer):
             "profile_url",
             "is_verified",
             "last_synced",
-        ]
-
-
-class LoginAuditSerializer(serializers.ModelSerializer):
-    datetime = serializers.DateTimeField(source="created")
-
-    class Meta:
-        model = models.LoginAudit
-        fields = [
-            "uuid",
-            "datetime",
-            "ip_address",
-            "device",
         ]
 
 

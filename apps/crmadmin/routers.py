@@ -1,6 +1,6 @@
 from rest_framework_nested import routers
 
-from apps.admins import viewsets
+from apps.crmadmin import viewsets
 
 admin_router = routers.DefaultRouter()
 admin_router.register("users", viewsets.AdminViewSet, basename="users")

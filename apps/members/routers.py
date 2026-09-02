@@ -12,6 +12,11 @@ admin_member_router.register(
     viewsets.MemberBankDetailViewSet,
     basename="member-bank-details",
 )
+admin_member_router.register(
+    r'(?P<member_uuid>[0-9a-f-]{36})/audit_login',
+    viewsets.MemberLoginAuditViewSet,
+    basename="member-audit-login",
+)
 
 profile_router = routers.DefaultRouter()
 profile_router.register("bank-details", viewsets.BankDetailViewSet, basename="bank-details")

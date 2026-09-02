@@ -1,4 +1,5 @@
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
@@ -315,8 +316,16 @@ class SubmissionViewSet(ReadOnlyModelViewSet):
     lookup_field = "uuid"
     item_key = "Submission Id"
 
-    def get_queryset(self):
-        queryset = (
+    # status codes that give /pending/, /approved/, /rejected/ a fixed filter
+    # while /submissions/ itself still takes ?status= like before.
+    ACTION_STATUS = {
+        "pending": "2",
+        "approved": "3",
+        "rejected": "4",
+    }
+
+    def base_queryset(self):
+        return (
             models.MemberTask.objects
             .select_related(
                 "member_job__member__user",
@@ -326,10 +335,8 @@ class SubmissionViewSet(ReadOnlyModelViewSet):
             .order_by("-submitted_at", "-created")
         )
 
-        status = self.request.query_params.get("status")
-        job_uuid = self.request.query_params.get("job_uuid")
-        member_uuid = self.request.query_params.get("member_uuid")
-        period_key = self.request.query_params.get("period_key")
+    def apply_filters(self, queryset, status=None):
+        params = self.request.query_params
 
         if status == "2":
             queryset = queryset.filter(
@@ -350,14 +357,51 @@ class SubmissionViewSet(ReadOnlyModelViewSet):
         else:
             queryset = queryset.filter(submitted_at__isnull=False)
 
+        job_uuid = params.get("job_uuid")
+        member_uuid = params.get("member_uuid")
+        period_key = params.get("period_key")
+        from_date = params.get("from_date")
+        to_date = params.get("to_date")
+        search = params.get("search")
+
         if job_uuid:
             queryset = queryset.filter(member_job__job__uuid=job_uuid)
         if member_uuid:
             queryset = queryset.filter(member_job__member__uuid=member_uuid)
         if period_key:
             queryset = queryset.filter(period_key=period_key)
+        if from_date:
+            queryset = queryset.filter(submitted_at__date__gte=from_date)
+        if to_date:
+            queryset = queryset.filter(submitted_at__date__lte=to_date)
+        if search:
+            queryset = queryset.filter(
+                Q(member_job__member__full_name__icontains=search)
+                | Q(member_job__member__user__username__icontains=search)
+                | Q(member_job__member__phone_number__icontains=search)
+            )
 
         return queryset
+
+    def get_queryset(self):
+        forced_status = self.ACTION_STATUS.get(self.action)
+        status = forced_status or self.request.query_params.get("status")
+        return self.apply_filters(self.base_queryset(), status=status)
+
+    @action(detail=False, methods=["get"])
+    def pending(self, request, *args, **kwargs):
+        """Submissions awaiting review. Same filters as /submissions/."""
+        return self.list(request, *args, **kwargs)
+
+    @action(detail=False, methods=["get"])
+    def approved(self, request, *args, **kwargs):
+        """Approved submissions. Same filters as /submissions/."""
+        return self.list(request, *args, **kwargs)
+
+    @action(detail=False, methods=["get"])
+    def rejected(self, request, *args, **kwargs):
+        """Rejected submissions. Same filters as /submissions/."""
+        return self.list(request, *args, **kwargs)
 
     def get_task(self, uuid):
         return models.MemberTask.objects.filter(uuid=uuid).first()

@@ -2,10 +2,9 @@ from drf_spectacular.utils import extend_schema
 from rest_framework.generics import GenericAPIView
 from rest_framework.serializers import ValidationError
 
-from apps.members import models, serializers_create, serializers_get
+from apps.members import serializers_create, serializers_get
 from base import responses
 from core import permissions
-from core.pagination import StandardPagination
 
 
 class ProfileView(GenericAPIView):
@@ -56,18 +55,3 @@ class ChangePasswordView(GenericAPIView):
         return responses.SuccessResponse(
             data={"message": "Password updated"}
         ).get_response()
-
-
-class LoginAuditView(GenericAPIView):
-    permission_classes = [permissions.IsMember]
-    serializer_class = serializers_get.LoginAuditSerializer
-    pagination_class = StandardPagination
-
-    def get(self, request, *args, **kwargs):
-        queryset = models.LoginAudit.objects.filter(
-            member=request.user.member,
-        ).order_by("-created")
-
-        page = self.paginate_queryset(queryset)
-        serializer = self.serializer_class(page, many=True, context={"request": self.request})
-        return self.get_paginated_response(serializer.data)

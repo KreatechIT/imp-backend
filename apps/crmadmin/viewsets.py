@@ -4,7 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.serializers import ValidationError
 from rest_framework.viewsets import ReadOnlyModelViewSet
 
-from apps.admins import models, serializers_create, serializers_get
+from apps.crmadmin import models, serializers_create, serializers_get
 from base import responses
 from base.models import UserModel
 from core import permissions
