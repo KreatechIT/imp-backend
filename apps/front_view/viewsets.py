@@ -14,7 +14,7 @@ from core.pagination import StandardPagination
 
 class BannerViewSet(ReadOnlyModelViewSet):
     serializer_class = serializers_get.BannerSerializer
-    permission_classes = [permissions.IsAdmin]
+    permission_classes = [permissions.IsAuthenticated]
     pagination_class = StandardPagination
     lookup_field = "uuid"
     item_key = "Banner Id"
@@ -25,6 +25,32 @@ class BannerViewSet(ReadOnlyModelViewSet):
         if location:
             queryset = queryset.filter(location=location)
         return queryset.order_by("location", "ordering", "-created")
+
+    @action(detail=False, methods=["get"])
+    def public(self, request, *args, **kwargs):
+        """Live banners — bare array, not paginated."""
+        now = timezone.now()
+        queryset = (
+            models.Banner.objects
+            .filter(archived=None)
+            .filter(Q(active_from__isnull=True) | Q(active_from__lte=now))
+            .filter(Q(active_until__isnull=True) | Q(active_until__gte=now))
+        )
+        location = request.query_params.get("location")
+        if location is not None:
+            try:
+                location = int(location)
+            except ValueError:
+                return responses.BadRequestError(
+                    details="Use an integer for this filter"
+                ).get_response()
+            queryset = queryset.filter(location=location)
+        queryset = queryset.order_by("location", "ordering", "-created")
+
+        data = self.serializer_class(
+            queryset, many=True, context={"request": self.request},
+        ).data
+        return responses.SuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.BannerSerializer)
     def create(self, request, *args, **kwargs):
@@ -90,7 +116,7 @@ class BannerViewSet(ReadOnlyModelViewSet):
 
 class GuideViewSet(ReadOnlyModelViewSet):
     serializer_class = serializers_get.GuideSerializer
-    permission_classes = [permissions.IsAdmin]
+    permission_classes = [permissions.IsAuthenticated]
     lookup_field = "uuid"
     item_key = "Guide Id"
 
@@ -100,6 +126,14 @@ class GuideViewSet(ReadOnlyModelViewSet):
         if location:
             queryset = queryset.filter(location=location)
         return queryset.order_by("location", "ordering", "created")
+
+    @action(detail=False, methods=["get"])
+    def public(self, request, *args, **kwargs):
+        """Guides — bare array, not paginated."""
+        data = self.serializer_class(
+            self.get_queryset(), many=True, context={"request": self.request},
+        ).data
+        return responses.SuccessResponse(data=data).get_response()
 
     @extend_schema(request=serializers_create.GuideSerializer)
     def create(self, request, *args, **kwargs):
@@ -164,8 +198,13 @@ class GuideViewSet(ReadOnlyModelViewSet):
 
 
 class TermsAndConditionsViewSet(ReadOnlyModelViewSet):
+    """List/create/update, and — since IsAuthenticated covers admin and
+    member alike — this same GET list is also the member-facing read.
+    A single category by itself is views.TermsPublicView, open with no
+    auth at all, since a T&C page is often shown before login."""
+
     serializer_class = serializers_get.TermsAndConditionsSerializer
-    permission_classes = [permissions.IsAdmin]
+    permission_classes = [permissions.IsAuthenticated]
     lookup_field = "uuid"
     item_key = "Terms Id"
 
@@ -221,49 +260,3 @@ class TermsAndConditionsViewSet(ReadOnlyModelViewSet):
     @extend_schema(request=serializers_create.EditTermsAndConditionsSerializer)
     def partial_update(self, request, uuid=None, *args, **kwargs):
         return self.update(request, uuid=uuid, *args, **kwargs)
-
-
-class ContentViewSet(ReadOnlyModelViewSet):
-    """Everything a member's screens read: live banners, guides and terms."""
-
-    serializer_class = serializers_get.BannerSerializer
-    permission_classes = [permissions.IsMember]
-    lookup_field = "uuid"
-
-    def get_queryset(self):
-        now = timezone.now()
-        queryset = (
-            models.Banner.objects
-            .filter(archived=None)
-            .filter(Q(active_from__isnull=True) | Q(active_from__lte=now))
-            .filter(Q(active_until__isnull=True) | Q(active_until__gte=now))
-        )
-        location = self.request.query_params.get("location")
-        if location:
-            queryset = queryset.filter(location=location)
-        return queryset.order_by("location", "ordering", "-created")
-
-    @action(detail=False, methods=["get"])
-    def guides(self, request, *args, **kwargs):
-        queryset = models.Guide.objects.filter(archived=None)
-        location = request.query_params.get("location")
-        if location:
-            queryset = queryset.filter(location=location)
-        queryset = queryset.order_by("location", "ordering", "created")
-
-        data = serializers_get.GuideSerializer(
-            queryset, many=True, context={"request": self.request},
-        ).data
-        return responses.SuccessResponse(data=data).get_response()
-
-    @action(detail=False, methods=["get"], url_path="terms")
-    def terms(self, request, *args, **kwargs):
-        queryset = models.TermsAndConditions.objects.all().order_by("category")
-        category = request.query_params.get("category")
-        if category:
-            queryset = queryset.filter(category=category)
-
-        data = serializers_get.TermsAndConditionsSerializer(
-            queryset, many=True, context={"request": self.request},
-        ).data
-        return responses.SuccessResponse(data=data).get_response()

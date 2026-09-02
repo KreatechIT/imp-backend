@@ -45,3 +45,11 @@ class TermsAndConditionsSerializer(serializers.ModelSerializer):
             "content",
             "modified",
         ]
+
+
+class SingleTermsAndConditionsSerializer(serializers.ModelSerializer):
+    """Flat shape for the public/<category>/ lookup — content only."""
+
+    class Meta:
+        model = models.TermsAndConditions
+        fields = ["content"]
