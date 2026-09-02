@@ -180,7 +180,7 @@ def earnings_breakdowns(member_uuids=None, month_key=None):
         breakdown["total"] = breakdown["base_pay"] - breakdown["deduction"]
         breakdown["jobs"].append({
             "member_job_uuid": member_job.uuid,
-            "company": job.company.name,
+            "org": job.company.name,
             "job_title": job.title,
             "payment_amount": job.payment_amount,
             "payment_period": job.payment_period,
@@ -218,7 +218,7 @@ def missed_breakdown(member_uuid, month_key=None):
             deduction_total += deduction_per_miss
             days.append({
                 "member_job_uuid": job["member_job_uuid"],
-                "company": job["company"],
+                "org": job["org"],
                 "job_title": job["job_title"],
                 "period_key": missed["period_key"],
                 "period_start": missed["period_start"],

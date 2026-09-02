@@ -4,7 +4,7 @@ from apps.jobs import choices
 from core import encryption
 
 
-class CompanySerializer(serializers.Serializer):
+class OrgSerializer(serializers.Serializer):
     name = serializers.CharField(required=True)
     status = serializers.ChoiceField(
         choices=choices.COMPANY_STATUS_CHOICES, default=1,
@@ -15,7 +15,7 @@ class CompanySerializer(serializers.Serializer):
     logo = serializers.ImageField(required=False, allow_null=True)
 
 
-class EditCompanySerializer(serializers.Serializer):
+class EditOrgSerializer(serializers.Serializer):
     name = serializers.CharField(required=False)
     status = serializers.ChoiceField(
         choices=choices.COMPANY_STATUS_CHOICES, required=False,
@@ -45,7 +45,6 @@ class EditJobRequirementSerializer(serializers.Serializer):
 
 
 class JobSerializer(serializers.Serializer):
-    company_uuid = serializers.UUIDField(required=True)
     title = serializers.CharField(required=True)
     description = serializers.CharField(
         required=False, allow_null=True, allow_blank=True,
@@ -79,7 +78,6 @@ class JobSerializer(serializers.Serializer):
 
 
 class EditJobSerializer(serializers.Serializer):
-    company_uuid = serializers.UUIDField(required=False)
     title = serializers.CharField(required=False)
     description = serializers.CharField(
         required=False, allow_null=True, allow_blank=True,

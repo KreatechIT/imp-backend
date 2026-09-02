@@ -6,7 +6,7 @@ from apps.frames import viewsets
 # at the same prefix.
 frame_router = routers.SimpleRouter()
 frame_router.register(
-    r'postings/(?P<job_uuid>[^/.]+)/frames',
+    r'org/(?P<org_uuid>[^/.]+)/job/(?P<job_uuid>[^/.]+)/frames',
     viewsets.FrameViewSet,
     basename="frames",
 )

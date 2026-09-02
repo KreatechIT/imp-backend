@@ -12,12 +12,42 @@ from core import permissions
 from core.pagination import StandardPagination
 
 
-class CompanyViewSet(ReadOnlyModelViewSet):
-    serializer_class = serializers_get.CompanySerializer
+class OrgScopedMixin:
+    """Everything under /jobs/org/{org_uuid}/ belongs to one org.
+
+    The org and the job come from the path now, so the parent is resolved
+    once here and every lookup below stays inside that scope.
+    """
+
+    def get_org(self):
+        return models.Company.objects.filter(
+            uuid=self.kwargs.get("org_uuid"), archived=None,
+        ).first()
+
+    def missing_org(self):
+        return responses.MissingItemError(
+            item_key="Org Id", item_id=self.kwargs.get("org_uuid"),
+        ).get_response()
+
+    def get_job(self):
+        return models.Job.objects.filter(
+            uuid=self.kwargs.get("job_uuid"),
+            company__uuid=self.kwargs.get("org_uuid"),
+            archived=None,
+        ).first()
+
+    def missing_job(self):
+        return responses.MissingItemError(
+            item_key="Job Id", item_id=self.kwargs.get("job_uuid"),
+        ).get_response()
+
+
+class OrgViewSet(ReadOnlyModelViewSet):
+    serializer_class = serializers_get.OrgSerializer
     permission_classes = [permissions.IsAdmin]
     pagination_class = StandardPagination
     lookup_field = "uuid"
-    item_key = "Company Id"
+    item_key = "Org Id"
 
     def get_queryset(self):
         queryset = models.Company.objects.filter(archived=None).order_by("name")
@@ -29,9 +59,9 @@ class CompanyViewSet(ReadOnlyModelViewSet):
             queryset = queryset.filter(status=status)
         return queryset
 
-    @extend_schema(request=serializers_create.CompanySerializer)
+    @extend_schema(request=serializers_create.OrgSerializer)
     def create(self, request, *args, **kwargs):
-        serializer = serializers_create.CompanySerializer(data=request.data)
+        serializer = serializers_create.OrgSerializer(data=request.data)
         try:
             serializer.is_valid(raise_exception=True)
         except ValidationError as e:
@@ -39,65 +69,65 @@ class CompanyViewSet(ReadOnlyModelViewSet):
 
         try:
             with transaction.atomic():
-                company = models.Company.objects.create(**serializer.validated_data)
+                org = models.Company.objects.create(**serializer.validated_data)
         except IntegrityError:
             return responses.ExistingDataError(
-                item_key="Company", item_id=serializer.validated_data["name"],
+                item_key="Org", item_id=serializer.validated_data["name"],
             ).get_response()
 
-        data = self.serializer_class(company, context={"request": self.request}).data
+        data = self.serializer_class(org, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
 
-    @extend_schema(request=serializers_create.EditCompanySerializer)
+    @extend_schema(request=serializers_create.EditOrgSerializer)
     def update(self, request, uuid=None, *args, **kwargs):
-        serializer = serializers_create.EditCompanySerializer(data=request.data)
+        serializer = serializers_create.EditOrgSerializer(data=request.data)
         try:
             serializer.is_valid(raise_exception=True)
         except ValidationError as e:
             return responses.InvalidDataError(details=e.detail).get_response()
 
         try:
-            company = models.Company.objects.get(uuid=uuid)
+            org = models.Company.objects.get(uuid=uuid)
         except models.Company.DoesNotExist:
             return responses.MissingItemError(
                 item_key=self.item_key, item_id=uuid,
             ).get_response()
 
-        if company.is_archived:
+        if org.is_archived:
             return responses.ItemAlreadyArchivedError(
                 item_key=self.item_key, item_id=uuid,
             ).get_response()
 
-        company.update(**serializer.validated_data)
+        org.update(**serializer.validated_data)
 
-        data = self.serializer_class(company, context={"request": self.request}).data
+        data = self.serializer_class(org, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
-    @extend_schema(request=serializers_create.EditCompanySerializer)
+    @extend_schema(request=serializers_create.EditOrgSerializer)
     def partial_update(self, request, uuid=None, *args, **kwargs):
         return self.update(request, uuid=uuid, *args, **kwargs)
 
     @action(detail=True, methods=["patch"])
     def archive(self, request, uuid=None, *args, **kwargs):
         try:
-            company = models.Company.objects.get(uuid=uuid)
+            org = models.Company.objects.get(uuid=uuid)
         except models.Company.DoesNotExist:
             return responses.MissingItemError(
                 item_key=self.item_key, item_id=uuid,
             ).get_response()
 
-        if company.is_archived:
+        if org.is_archived:
             return responses.ItemAlreadyArchivedError(
                 item_key=self.item_key, item_id=uuid,
             ).get_response()
 
-        company.archive()
+        org.archive()
 
-        data = self.serializer_class(company, context={"request": self.request}).data
+        data = self.serializer_class(org, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
 
-class JobViewSet(ReadOnlyModelViewSet):
+class JobViewSet(OrgScopedMixin, ReadOnlyModelViewSet):
     serializer_class = serializers_get.JobSerializer
     permission_classes = [permissions.IsAdmin]
     pagination_class = StandardPagination
@@ -107,21 +137,23 @@ class JobViewSet(ReadOnlyModelViewSet):
     def get_queryset(self):
         queryset = (
             models.Job.objects
-            .filter(archived=None)
+            .filter(company__uuid=self.kwargs.get("org_uuid"), archived=None)
             .select_related("company")
             .prefetch_related("requirements")
             .order_by("-created")
         )
-        company_uuid = self.request.query_params.get("company_uuid")
         status = self.request.query_params.get("status")
         title = self.request.query_params.get("title")
-        if company_uuid:
-            queryset = queryset.filter(company__uuid=company_uuid)
         if status:
             queryset = queryset.filter(status=status)
         if title:
             queryset = queryset.filter(title__icontains=title)
         return queryset
+
+    def get_scoped_job(self, uuid):
+        return models.Job.objects.filter(
+            uuid=uuid, company__uuid=self.kwargs.get("org_uuid"),
+        ).first()
 
     @extend_schema(request=serializers_create.JobSerializer)
     def create(self, request, *args, **kwargs):
@@ -132,17 +164,13 @@ class JobViewSet(ReadOnlyModelViewSet):
             return responses.InvalidDataError(details=e.detail).get_response()
         validated_data = serializer.validated_data
 
-        company_uuid = validated_data.pop("company_uuid")
+        org = self.get_org()
+        if org is None:
+            return self.missing_org()
+
         requirements = validated_data.pop("requirements", [])
 
-        try:
-            company = models.Company.objects.get(uuid=company_uuid, archived=None)
-        except models.Company.DoesNotExist:
-            return responses.MissingItemError(
-                item_key="Company Id", item_id=company_uuid,
-            ).get_response()
-
-        job = models.Job.objects.create(company=company, **validated_data)
+        job = models.Job.objects.create(company=org, **validated_data)
 
         for requirement in requirements:
             models.JobRequirement.objects.create(job=job, **requirement)
@@ -159,9 +187,8 @@ class JobViewSet(ReadOnlyModelViewSet):
             return responses.InvalidDataError(details=e.detail).get_response()
         validated_data = serializer.validated_data
 
-        try:
-            job = models.Job.objects.get(uuid=uuid)
-        except models.Job.DoesNotExist:
+        job = self.get_scoped_job(uuid)
+        if job is None:
             return responses.MissingItemError(
                 item_key=self.item_key, item_id=uuid,
             ).get_response()
@@ -170,17 +197,6 @@ class JobViewSet(ReadOnlyModelViewSet):
             return responses.ItemAlreadyArchivedError(
                 item_key=self.item_key, item_id=uuid,
             ).get_response()
-
-        company_uuid = validated_data.pop("company_uuid", None)
-        if company_uuid:
-            try:
-                validated_data["company"] = models.Company.objects.get(
-                    uuid=company_uuid, archived=None,
-                )
-            except models.Company.DoesNotExist:
-                return responses.MissingItemError(
-                    item_key="Company Id", item_id=company_uuid,
-                ).get_response()
 
         start_date = validated_data.get("start_date", job.start_date)
         end_date = validated_data.get("end_date", job.end_date)
@@ -200,9 +216,8 @@ class JobViewSet(ReadOnlyModelViewSet):
 
     @action(detail=True, methods=["patch"])
     def archive(self, request, uuid=None, *args, **kwargs):
-        try:
-            job = models.Job.objects.get(uuid=uuid)
-        except models.Job.DoesNotExist:
+        job = self.get_scoped_job(uuid)
+        if job is None:
             return responses.MissingItemError(
                 item_key=self.item_key, item_id=uuid,
             ).get_response()
@@ -218,7 +233,7 @@ class JobViewSet(ReadOnlyModelViewSet):
         return responses.SuccessResponse(data=data).get_response()
 
 
-class JobRequirementViewSet(ReadOnlyModelViewSet):
+class JobRequirementViewSet(OrgScopedMixin, ReadOnlyModelViewSet):
     serializer_class = serializers_get.JobRequirementSerializer
     permission_classes = [permissions.IsAdmin]
     lookup_field = "uuid"
@@ -226,12 +241,16 @@ class JobRequirementViewSet(ReadOnlyModelViewSet):
 
     def get_queryset(self):
         return models.JobRequirement.objects.filter(
-            job__uuid=self.kwargs.get("job_uuid"), archived=None,
+            job__uuid=self.kwargs.get("job_uuid"),
+            job__company__uuid=self.kwargs.get("org_uuid"),
+            archived=None,
         ).order_by("content_type")
 
-    def get_job(self):
-        return models.Job.objects.filter(
-            uuid=self.kwargs.get("job_uuid"), archived=None,
+    def get_requirement(self, uuid):
+        return models.JobRequirement.objects.filter(
+            uuid=uuid,
+            job__uuid=self.kwargs.get("job_uuid"),
+            job__company__uuid=self.kwargs.get("org_uuid"),
         ).first()
 
     @extend_schema(request=serializers_create.JobRequirementSerializer)
@@ -244,9 +263,7 @@ class JobRequirementViewSet(ReadOnlyModelViewSet):
 
         job = self.get_job()
         if job is None:
-            return responses.MissingItemError(
-                item_key="Job Id", item_id=self.kwargs.get("job_uuid"),
-            ).get_response()
+            return self.missing_job()
 
         try:
             with transaction.atomic():
@@ -269,11 +286,8 @@ class JobRequirementViewSet(ReadOnlyModelViewSet):
         except ValidationError as e:
             return responses.InvalidDataError(details=e.detail).get_response()
 
-        try:
-            requirement = models.JobRequirement.objects.get(
-                uuid=uuid, job__uuid=self.kwargs.get("job_uuid"),
-            )
-        except models.JobRequirement.DoesNotExist:
+        requirement = self.get_requirement(uuid)
+        if requirement is None:
             return responses.MissingItemError(
                 item_key=self.item_key, item_id=uuid,
             ).get_response()
@@ -289,11 +303,8 @@ class JobRequirementViewSet(ReadOnlyModelViewSet):
 
     @action(detail=True, methods=["patch"])
     def archive(self, request, uuid=None, *args, **kwargs):
-        try:
-            requirement = models.JobRequirement.objects.get(
-                uuid=uuid, job__uuid=self.kwargs.get("job_uuid"),
-            )
-        except models.JobRequirement.DoesNotExist:
+        requirement = self.get_requirement(uuid)
+        if requirement is None:
             return responses.MissingItemError(
                 item_key=self.item_key, item_id=uuid,
             ).get_response()
@@ -309,6 +320,137 @@ class JobRequirementViewSet(ReadOnlyModelViewSet):
         return responses.SuccessResponse(data=data).get_response()
 
 
+class JobMemberViewSet(OrgScopedMixin, ReadOnlyModelViewSet):
+    """Who applied to this job, and the decision on each application.
+
+    One list for every state. `?status=1` is the pending queue, `?status=2`
+    the members currently working the job.
+    """
+
+    serializer_class = serializers_get.MemberJobSerializer
+    permission_classes = [permissions.IsAdmin]
+    pagination_class = StandardPagination
+    lookup_field = "uuid"
+    item_key = "Application Id"
+
+    def base_queryset(self):
+        return (
+            models.MemberJob.objects
+            .filter(
+                job__uuid=self.kwargs.get("job_uuid"),
+                job__company__uuid=self.kwargs.get("org_uuid"),
+                archived=None,
+            )
+            .select_related("member__user", "job__company")
+            .order_by("-created")
+        )
+
+    def get_queryset(self):
+        queryset = self.base_queryset()
+
+        status = self.request.query_params.get("status")
+        search = self.request.query_params.get("search")
+        if status:
+            queryset = queryset.filter(status=status)
+        if search:
+            queryset = queryset.filter(
+                Q(member__full_name__icontains=search)
+                | Q(member__user__username__icontains=search)
+                | Q(member__phone_number__icontains=search)
+            )
+        return queryset
+
+    def get_application(self, uuid):
+        return self.base_queryset().filter(uuid=uuid).first()
+
+    @extend_schema(request=serializers_create.EditMemberJobSerializer)
+    def partial_update(self, request, uuid=None, *args, **kwargs):
+        """The escape hatch: set any field directly, no state guard."""
+        serializer = serializers_create.EditMemberJobSerializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except ValidationError as e:
+            return responses.InvalidDataError(details=e.detail).get_response()
+
+        application = self.get_application(uuid)
+        if application is None:
+            return responses.MissingItemError(
+                item_key=self.item_key, item_id=uuid,
+            ).get_response()
+
+        application.update(**serializer.validated_data)
+
+        data = self.serializer_class(application, context={"request": self.request}).data
+        return responses.SuccessResponse(data=data).get_response()
+
+    @action(detail=True, methods=["patch"])
+    def complete(self, request, uuid=None, *args, **kwargs):
+        application = self.get_application(uuid)
+        if application is None:
+            return responses.MissingItemError(
+                item_key=self.item_key, item_id=uuid,
+            ).get_response()
+
+        if application.status != 2:
+            return responses.BadRequestError(
+                details="Only an active application can be completed"
+            ).get_response()
+
+        application.update(status=3, completed=timezone.localdate())
+
+        data = self.serializer_class(application, context={"request": self.request}).data
+        return responses.SuccessResponse(data=data).get_response()
+
+    @extend_schema(request=serializers_create.ApproveMemberJobSerializer)
+    @action(detail=True, methods=["patch"])
+    def approve(self, request, uuid=None, *args, **kwargs):
+        serializer = serializers_create.ApproveMemberJobSerializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except ValidationError as e:
+            return responses.InvalidDataError(details=e.detail).get_response()
+
+        application = self.get_application(uuid)
+        if application is None:
+            return responses.MissingItemError(
+                item_key=self.item_key, item_id=uuid,
+            ).get_response()
+
+        if application.status != 1:
+            return responses.BadRequestError(
+                details="Application has already been reviewed"
+            ).get_response()
+
+        updates = {"status": 2, "joined": timezone.localdate()}
+        affiliate_link = serializer.validated_data.get("affiliate_link")
+        if affiliate_link:
+            updates["affiliate_link"] = affiliate_link
+            updates["affiliate_link_status"] = 3
+
+        application.update(**updates)
+
+        data = self.serializer_class(application, context={"request": self.request}).data
+        return responses.SuccessResponse(data=data).get_response()
+
+    @action(detail=True, methods=["patch"])
+    def reject(self, request, uuid=None, *args, **kwargs):
+        application = self.get_application(uuid)
+        if application is None:
+            return responses.MissingItemError(
+                item_key=self.item_key, item_id=uuid,
+            ).get_response()
+
+        if application.status != 1:
+            return responses.BadRequestError(
+                details="Application has already been reviewed"
+            ).get_response()
+
+        application.update(status=4)
+
+        data = self.serializer_class(application, context={"request": self.request}).data
+        return responses.SuccessResponse(data=data).get_response()
+
+
 class SubmissionViewSet(ReadOnlyModelViewSet):
     serializer_class = serializers_get.MemberTaskSerializer
     permission_classes = [permissions.IsAdmin]
@@ -317,7 +459,7 @@ class SubmissionViewSet(ReadOnlyModelViewSet):
     item_key = "Submission Id"
 
     # status codes that give /pending/, /approved/, /rejected/ a fixed filter
-    # while /submissions/ itself still takes ?status= like before.
+    # while /submission/ itself still takes ?status= like before.
     ACTION_STATUS = {
         "pending": "2",
         "approved": "3",
@@ -327,6 +469,7 @@ class SubmissionViewSet(ReadOnlyModelViewSet):
     def base_queryset(self):
         return (
             models.MemberTask.objects
+            .filter(member_job__job__uuid=self.kwargs.get("job_uuid"))
             .select_related(
                 "member_job__member__user",
                 "member_job__job__company",
@@ -357,15 +500,12 @@ class SubmissionViewSet(ReadOnlyModelViewSet):
         else:
             queryset = queryset.filter(submitted_at__isnull=False)
 
-        job_uuid = params.get("job_uuid")
         member_uuid = params.get("member_uuid")
         period_key = params.get("period_key")
         from_date = params.get("from_date")
         to_date = params.get("to_date")
         search = params.get("search")
 
-        if job_uuid:
-            queryset = queryset.filter(member_job__job__uuid=job_uuid)
         if member_uuid:
             queryset = queryset.filter(member_job__member__uuid=member_uuid)
         if period_key:
@@ -390,21 +530,23 @@ class SubmissionViewSet(ReadOnlyModelViewSet):
 
     @action(detail=False, methods=["get"])
     def pending(self, request, *args, **kwargs):
-        """Submissions awaiting review. Same filters as /submissions/."""
+        """Submissions awaiting review. Same filters as /submission/."""
         return self.list(request, *args, **kwargs)
 
     @action(detail=False, methods=["get"])
     def approved(self, request, *args, **kwargs):
-        """Approved submissions. Same filters as /submissions/."""
+        """Approved submissions. Same filters as /submission/."""
         return self.list(request, *args, **kwargs)
 
     @action(detail=False, methods=["get"])
     def rejected(self, request, *args, **kwargs):
-        """Rejected submissions. Same filters as /submissions/."""
+        """Rejected submissions. Same filters as /submission/."""
         return self.list(request, *args, **kwargs)
 
     def get_task(self, uuid):
-        return models.MemberTask.objects.filter(uuid=uuid).first()
+        return models.MemberTask.objects.filter(
+            uuid=uuid, member_job__job__uuid=self.kwargs.get("job_uuid"),
+        ).first()
 
     @action(detail=True, methods=["patch"])
     def approve(self, request, uuid=None, *args, **kwargs):

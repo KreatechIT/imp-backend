@@ -3,7 +3,7 @@ from rest_framework import serializers
 from apps.jobs import models
 
 
-class CompanySerializer(serializers.ModelSerializer):
+class OrgSerializer(serializers.ModelSerializer):
     total_jobs = serializers.SerializerMethodField()
 
     def get_total_jobs(self, obj):
@@ -35,9 +35,9 @@ class JobRequirementSerializer(serializers.ModelSerializer):
 
 
 class JobSerializer(serializers.ModelSerializer):
-    company = serializers.CharField(source="company.name")
-    company_uuid = serializers.UUIDField(source="company.uuid")
-    company_logo = serializers.ImageField(source="company.logo")
+    org = serializers.CharField(source="company.name")
+    org_uuid = serializers.UUIDField(source="company.uuid")
+    org_logo = serializers.ImageField(source="company.logo")
     is_live = serializers.BooleanField()
     requirements = serializers.SerializerMethodField()
 
@@ -49,9 +49,9 @@ class JobSerializer(serializers.ModelSerializer):
         model = models.Job
         fields = [
             "uuid",
-            "company",
-            "company_uuid",
-            "company_logo",
+            "org",
+            "org_uuid",
+            "org_logo",
             "title",
             "description",
             "recurrence",
@@ -71,8 +71,8 @@ class MemberJobSerializer(serializers.ModelSerializer):
     member = serializers.CharField(source="member.full_name")
     member_uuid = serializers.UUIDField(source="member.uuid")
     username = serializers.CharField(source="member.user.username")
-    company = serializers.CharField(source="job.company.name")
-    company_logo = serializers.ImageField(source="job.company.logo")
+    org = serializers.CharField(source="job.company.name")
+    org_logo = serializers.ImageField(source="job.company.logo")
     job_uuid = serializers.UUIDField(source="job.uuid")
     job_title = serializers.CharField(source="job.title")
     payment_amount = serializers.DecimalField(
@@ -93,8 +93,8 @@ class MemberJobSerializer(serializers.ModelSerializer):
             "member",
             "member_uuid",
             "username",
-            "company",
-            "company_logo",
+            "org",
+            "org_logo",
             "job_uuid",
             "job_title",
             "payment_amount",
@@ -127,7 +127,7 @@ class TaskFileSerializer(serializers.ModelSerializer):
 class MemberTaskSerializer(serializers.ModelSerializer):
     member = serializers.CharField(source="member_job.member.full_name")
     member_uuid = serializers.UUIDField(source="member_job.member.uuid")
-    company = serializers.CharField(source="member_job.job.company.name")
+    org = serializers.CharField(source="member_job.job.company.name")
     job_title = serializers.CharField(source="member_job.job.title")
     member_job_uuid = serializers.UUIDField(source="member_job.uuid")
     platform = serializers.IntegerField(source="requirement.platform")
@@ -148,7 +148,7 @@ class MemberTaskSerializer(serializers.ModelSerializer):
             "uuid",
             "member",
             "member_uuid",
-            "company",
+            "org",
             "job_title",
             "member_job_uuid",
             "platform",

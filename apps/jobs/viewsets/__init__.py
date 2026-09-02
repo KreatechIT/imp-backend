@@ -1,5 +1,6 @@
 from apps.jobs.viewsets.crmview import (
-    CompanyViewSet,
+    OrgViewSet,
+    JobMemberViewSet,
     JobRequirementViewSet,
     JobViewSet,
     SubmissionViewSet,
@@ -11,7 +12,8 @@ from apps.jobs.viewsets.member import (
 )
 
 __all__ = [
-    "CompanyViewSet",
+    "OrgViewSet",
+    "JobMemberViewSet",
     "JobRequirementViewSet",
     "JobViewSet",
     "SubmissionViewSet",

@@ -1,6 +1,7 @@
 from datetime import datetime, time, timedelta
 
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
@@ -20,6 +21,13 @@ from core.pagination import StandardPagination
 
 
 class MemberJobViewSet(ReadOnlyModelViewSet):
+    """The member's own jobs, read only.
+
+    Approving, rejecting and completing an application are admin work and
+    live under the job itself, at
+    /jobs/org/{org_uuid}/job/{job_uuid}/member/{uuid}/.
+    """
+
     serializer_class = serializers_get.MemberJobSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = StandardPagination
@@ -38,65 +46,6 @@ class MemberJobViewSet(ReadOnlyModelViewSet):
             queryset = queryset.filter(status=status)
         return queryset
 
-    def get_member_job(self, uuid):
-        return models.MemberJob.objects.filter(
-            uuid=uuid,
-            member__uuid=self.kwargs.get("member_uuid"),
-            archived=None,
-        ).first()
-
-    def apply_update(self, uuid, **updates):
-        if not self.request.user.is_admin:
-            return responses.BadRequestError(
-                "Can only be triggered by admins"
-            ).get_response()
-
-        member_job = self.get_member_job(uuid)
-        if member_job is None:
-            return responses.MissingItemError(
-                item_key=self.item_key, item_id=uuid,
-            ).get_response()
-
-        member_job.update(**updates)
-
-        data = self.serializer_class(member_job, context={"request": self.request}).data
-        return responses.SuccessResponse(data=data).get_response()
-
-    @extend_schema(request=serializers_create.EditMemberJobSerializer)
-    def partial_update(self, request, uuid=None, *args, **kwargs):
-        serializer = serializers_create.EditMemberJobSerializer(data=request.data)
-        try:
-            serializer.is_valid(raise_exception=True)
-        except ValidationError as e:
-            return responses.InvalidDataError(details=e.detail).get_response()
-
-        return self.apply_update(uuid, **serializer.validated_data)
-
-    @extend_schema(request=serializers_create.ApproveMemberJobSerializer)
-    @action(detail=True, methods=["patch"])
-    def approve(self, request, uuid=None, *args, **kwargs):
-        serializer = serializers_create.ApproveMemberJobSerializer(data=request.data)
-        try:
-            serializer.is_valid(raise_exception=True)
-        except ValidationError as e:
-            return responses.InvalidDataError(details=e.detail).get_response()
-
-        updates = {"status": 2, "joined": timezone.localdate()}
-        affiliate_link = serializer.validated_data.get("affiliate_link")
-        if affiliate_link:
-            updates["affiliate_link"] = affiliate_link
-            updates["affiliate_link_status"] = 3
-
-        return self.apply_update(uuid, **updates)
-
-    @action(detail=True, methods=["patch"])
-    def reject(self, request, uuid=None, *args, **kwargs):
-        return self.apply_update(uuid, status=4)
-
-    @action(detail=True, methods=["patch"])
-    def complete(self, request, uuid=None, *args, **kwargs):
-        return self.apply_update(uuid, status=3, completed=timezone.localdate())
-
 
 class AvailableJobViewSet(ReadOnlyModelViewSet):
     serializer_class = serializers_get.AvailableJobSerializer
@@ -106,9 +55,13 @@ class AvailableJobViewSet(ReadOnlyModelViewSet):
     item_key = "Job Id"
 
     def get_queryset(self):
+        # the same window `apply` enforces, so the board never offers a job
+        # that would be refused on tap
+        now = timezone.now()
         return (
             models.Job.objects
-            .filter(archived=None, status=2)
+            .filter(archived=None, status=2, start_date__lte=now)
+            .filter(Q(end_date__isnull=True) | Q(end_date__gte=now))
             .select_related("company")
             .prefetch_related("requirements")
             .order_by("-created")

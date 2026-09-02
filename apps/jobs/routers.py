@@ -2,11 +2,30 @@ from rest_framework_nested import routers
 
 from apps.jobs import viewsets
 
+# Admin routes all hang off an org: /jobs/org/{org_uuid}/job/{job_uuid}/...
+# so the parent uuids come from the path instead of the request body.
 job_router = routers.DefaultRouter()
-job_router.register("companies", viewsets.CompanyViewSet, basename="companies")
-job_router.register("postings", viewsets.JobViewSet, basename="postings")
-job_router.register(r'postings/(?P<job_uuid>[^/.]+)/requirements', viewsets.JobRequirementViewSet, basename="requirements")
-job_router.register("submissions", viewsets.SubmissionViewSet, basename="submissions")
+job_router.register("org", viewsets.OrgViewSet, basename="org")
+job_router.register(
+    r'org/(?P<org_uuid>[^/.]+)/job',
+    viewsets.JobViewSet,
+    basename="job",
+)
+job_router.register(
+    r'org/(?P<org_uuid>[^/.]+)/job/(?P<job_uuid>[^/.]+)/requirement',
+    viewsets.JobRequirementViewSet,
+    basename="requirement",
+)
+job_router.register(
+    r'org/(?P<org_uuid>[^/.]+)/job/(?P<job_uuid>[^/.]+)/member',
+    viewsets.JobMemberViewSet,
+    basename="job-member",
+)
+job_router.register(
+    r'job/(?P<job_uuid>[^/.]+)/submission',
+    viewsets.SubmissionViewSet,
+    basename="submission",
+)
 
 
 # SimpleRouter: DefaultRouter's api root view would shadow /members/

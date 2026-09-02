@@ -25,7 +25,7 @@ class PayoutSerializer(serializers.ModelSerializer):
 
 class EarningsJobSerializer(serializers.Serializer):
     member_job_uuid = serializers.UUIDField()
-    company = serializers.CharField()
+    org = serializers.CharField()
     job_title = serializers.CharField()
     payment_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
     payment_period = serializers.IntegerField()
@@ -51,7 +51,7 @@ class EarningsSerializer(serializers.Serializer):
 
 class MissedDaySerializer(serializers.Serializer):
     member_job_uuid = serializers.UUIDField()
-    company = serializers.CharField()
+    org = serializers.CharField()
     job_title = serializers.CharField()
     period_key = serializers.CharField()
     period_start = serializers.DateField()
