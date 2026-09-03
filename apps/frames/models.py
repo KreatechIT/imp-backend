@@ -26,8 +26,8 @@ def rendered_content_upload_to(instance, filename):
 class Frame(TimeStampedModel):
     """An overlay an admin uploads for one job.
 
-    The compositing happens in the client; the backend only keeps the
-    library and says which frames belong to which job.
+    The backend keeps the library, says which frames belong to which
+    job, and composites the overlay server-side (see apps.frames.tasks).
     """
 
     job = models.ForeignKey(

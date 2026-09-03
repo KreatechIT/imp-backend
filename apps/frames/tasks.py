@@ -34,13 +34,20 @@ def render_content(rendered_content_id):
             for chunk in frame.image.chunks():
                 fh.write(chunk)
 
-        if is_video_content:
+        if is_video_content or is_animated_frame:
+            # GIF has no inter-frame compression, so a full-resolution frame
+            # played over many frames balloons to tens of MB; MP4 keeps the
+            # same animation at a fraction of the size.
             out_ext = ".mp4"
-        elif is_animated_frame:
-            out_ext = ".gif"
         else:
             out_ext = ".jpg"
         out_path = os.path.join(tmp_dir, f"{uuid4().hex}{out_ext}")
+
+        # The frame is the fixed canvas; content varies in size, so it is
+        # stretched edge-to-edge onto the frame's exact resolution before
+        # the overlay is drawn on top - otherwise a size mismatch leaves
+        # part of the canvas unframed or crops the content.
+        scale_to_frame = "[0:v][1:v]scale2ref=w=iw:h=ih[content][frame]"
 
         if is_video_content:
             cmd = [
@@ -51,8 +58,10 @@ def render_content(rendered_content_id):
                 cmd += ["-ignore_loop", "0"]
             cmd += [
                 "-i", frame_path,
-                "-filter_complex", "overlay=0:0:shortest=1",
-                "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                "-filter_complex",
+                f"{scale_to_frame};[content][frame]overlay=0:0:shortest=1",
+                "-c:v", "libx264", "-preset", "medium", "-crf", "26",
+                "-pix_fmt", "yuv420p",
                 out_path,
             ]
         else:
@@ -61,7 +70,10 @@ def render_content(rendered_content_id):
                     "ffmpeg", "-y",
                     "-loop", "1", "-i", content_path,
                     "-i", frame_path,
-                    "-filter_complex", "overlay=0:0:shortest=1",
+                    "-filter_complex",
+                    f"{scale_to_frame};[content][frame]overlay=0:0:shortest=1",
+                    "-c:v", "libx264", "-preset", "medium", "-crf", "26",
+                    "-pix_fmt", "yuv420p",
                     out_path,
                 ]
             else:
@@ -69,8 +81,10 @@ def render_content(rendered_content_id):
                     "ffmpeg", "-y",
                     "-i", content_path,
                     "-i", frame_path,
-                    "-filter_complex", "overlay=0:0",
+                    "-filter_complex",
+                    f"{scale_to_frame};[content][frame]overlay=0:0",
                     "-frames:v", "1",
+                    "-q:v", "3",
                     out_path,
                 ]
 
