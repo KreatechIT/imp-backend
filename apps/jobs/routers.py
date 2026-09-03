@@ -28,6 +28,12 @@ job_router.register(
     viewsets.SubmissionViewSet,
     basename="submission",
 )
+# Flat, cross-job/cross-org pending applications: /jobs/applications/pending/
+job_router.register(
+    "applications/pending",
+    viewsets.PendingApplicationViewSet,
+    basename="pending-application",
+)
 
 
 # SimpleRouter: DefaultRouter's api root view would shadow /members/

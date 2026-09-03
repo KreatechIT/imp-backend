@@ -485,6 +485,44 @@ class JobMemberViewSet(OrgScopedMixin, ReadOnlyModelViewSet):
         return responses.SuccessResponse(data=data).get_response()
 
 
+class PendingApplicationViewSet(ReadOnlyModelViewSet):
+    """Flat, cross-job/cross-org pending applications — /jobs/applications/pending/.
+
+    JobMemberViewSet above stays job-scoped (?status=1 there is the pending
+    queue for one job); this exists alongside it for callers that need every
+    still-applied member across every job/org in one paginated list, each
+    row carrying its own job_uuid and org_uuid.
+    """
+
+    serializer_class = serializers_get.MemberJobSerializer
+    permission_classes = [permissions.IsAdmin]
+    pagination_class = StandardPagination
+    lookup_field = "uuid"
+    item_key = "Application Id"
+
+    def get_queryset(self):
+        queryset = (
+            models.MemberJob.objects
+            .filter(status=1, archived=None)
+            .select_related("member__user", "job__company")
+            .order_by("-created")
+        )
+        org_uuid = self.request.query_params.get("org_uuid")
+        job_uuid = self.request.query_params.get("job_uuid")
+        search = self.request.query_params.get("search")
+        if org_uuid:
+            queryset = queryset.filter(job__company__uuid=org_uuid)
+        if job_uuid:
+            queryset = queryset.filter(job__uuid=job_uuid)
+        if search:
+            queryset = queryset.filter(
+                Q(member__full_name__icontains=search)
+                | Q(member__user__username__icontains=search)
+                | Q(member__phone_number__icontains=search)
+            )
+        return queryset
+
+
 class SubmissionViewSet(ReadOnlyModelViewSet):
     serializer_class = serializers_get.MemberTaskSerializer
     permission_classes = [permissions.IsAdmin]

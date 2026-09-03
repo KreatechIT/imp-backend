@@ -18,10 +18,11 @@
 
 ## 3. Changelog
 
-**Current version: 1.3** — 2026-09-03
+**Current version: 1.4** — 2026-09-03
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.4 | 2026-09-03 | **Added**: flat cross-job/cross-org pending applications, `GET /jobs/applications/pending/` and `GET /jobs/applications/pending/{uuid}/` (§16a) — every `status=1` APPLIED member-job across every job/org, paginated, each row carrying its own `job_uuid` and `org_uuid`; alongside the existing job-scoped `/jobs/org/{org_uuid}/job/{job_uuid}/member/` (§16) which is unchanged. Added `org_uuid` field to the `MemberJob` object (§16) — was previously only `org` (name). |
 | 1.3 | 2026-09-03 | **Added**: flat cross-org job list, `GET /jobs/list/` and `GET /jobs/list/{uuid}/` (§12a) — lists jobs across every org without requiring the org uuid in the path, alongside the existing org-scoped `/jobs/org/{org_uuid}/job/` (§12) which is unchanged. Also enabled `CORS_ALLOW_ALL_ORIGINS` (env-driven) on staging. |
 | 1.2 | 2026-09-03 | Full rewrite against the current codebase — previous doc described a stale route layout (`/jobs/companies/`, `/jobs/postings/`, `/front-view/content/`) that no longer exists. **Org/Job routes renamed**: `/jobs/companies/` → `/jobs/org/`, `/jobs/postings/` → `/jobs/org/{org_uuid}/job/`, requirements/frames nested under it accordingly. **Added**: Frame Library API (`/frame/library/`, `/frame/job/{job_uuid}/`) — create/edit/archive a frame from anywhere, not just from inside its job. **Removed**: `/front-view/content/` (member-facing content aggregator) no longer exists in code; members read banners/guides/terms straight off the same admin routes (all of which only require `IsAuthenticated`, not `IsAdmin`) plus the dedicated `public`/`public/{category}` actions. Documented permission class (`IsAdmin` / `IsMember` / `IsAuthenticated`) per section — this was missing before and matters because several "admin" routes are actually only `IsAuthenticated`, see §0 Known issues. Fixed a bug where creating a frame at `/jobs/org/{org}/job/{job}/frames/` always 500'd. |
 | 1.1 | 2026-09-02 | Added CMS dashboard KPI. Submissions: added `pending/` / `approved/` / `rejected/` shortcuts and `from_date` / `to_date` / `search` filters. Removed `GET /members/profile/audit-log/` (login history is no longer exposed via API). (Internally the `admins` Django app was renamed to `crmadmin` — no API path changed.) 85 endpoints. |
@@ -647,7 +648,7 @@ Same `Frame` model and object shape as §14, but not nested under a job path —
 {
   "uuid": "uuid",
   "member": "full name", "member_uuid": "uuid", "username": "string",
-  "org": "string", "org_logo": "url|null",
+  "org": "string", "org_uuid": "uuid", "org_logo": "url|null",
   "job_uuid": "uuid", "job_title": "string",
   "payment_amount": "0.00", "payment_period": 3, "recurrence": 1,
   "status": 2, "affiliate_link": "url|null", "affiliate_link_status": 1,
@@ -656,7 +657,20 @@ Same `Frame` model and object shape as §14, but not nested under a job path —
 }
 ```
 
-`has_frames` = the job has at least one active, unarchived frame. Verified by live testing (flips `true` the moment a frame is created on the job).
+`has_frames` = the job has at least one active, unarchived frame. Verified by live testing (flips `true` the moment a frame is created on the job). `org_uuid` added in 1.4.
+
+## 16a. Pending applications, all jobs — `/jobs/applications/pending/`
+
+`IsAdmin`. Read-only. Same `MemberJob` object as §16, but flat — every application still in `status = 1` APPLIED, across every job and org, instead of one job at a time. Each row carries its own `job_uuid` and `org_uuid`. Use this when you just need the pending queue everywhere; use §16 when you're already scoped to one job.
+
+| Method | Path |
+|---|---|
+| GET | `/jobs/applications/pending/` |
+| GET | `/jobs/applications/pending/{uuid}/` |
+
+**Query**: `org_uuid` (uuid, filter to one org), `job_uuid` (uuid, filter to one job), `search` (name / username / phone), `page`, `page_size`.
+
+Response object identical to §16 (always `status: 1` here).
 
 ## 17. Job settings — `/jobs/settings/`
 

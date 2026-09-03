@@ -72,6 +72,7 @@ class MemberJobSerializer(serializers.ModelSerializer):
     member_uuid = serializers.UUIDField(source="member.uuid")
     username = serializers.CharField(source="member.user.username")
     org = serializers.CharField(source="job.company.name")
+    org_uuid = serializers.UUIDField(source="job.company.uuid")
     org_logo = serializers.ImageField(source="job.company.logo")
     job_uuid = serializers.UUIDField(source="job.uuid")
     job_title = serializers.CharField(source="job.title")
@@ -94,6 +95,7 @@ class MemberJobSerializer(serializers.ModelSerializer):
             "member_uuid",
             "username",
             "org",
+            "org_uuid",
             "org_logo",
             "job_uuid",
             "job_title",
