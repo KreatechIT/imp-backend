@@ -113,6 +113,7 @@ class MemberJobSerializer(serializers.ModelSerializer):
 
 
 class TaskFileSerializer(serializers.ModelSerializer):
+    frame_uuid = serializers.UUIDField(source="frame.uuid", allow_null=True, read_only=True)
 
     class Meta:
         model = models.TaskFile
@@ -122,6 +123,9 @@ class TaskFileSerializer(serializers.ModelSerializer):
             "media_type",
             "original_name",
             "size",
+            "frame_uuid",
+            "is_original",
+            "render_status",
             "created",
         ]
 

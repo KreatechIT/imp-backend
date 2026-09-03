@@ -442,12 +442,28 @@ class TaskFile(TimeStampedModel):
         null=True,
     )
     size = models.PositiveBigIntegerField(default=0)
+    frame = models.ForeignKey(
+        "frames.Frame",
+        verbose_name=_("Frame"),
+        on_delete=models.SET_NULL,
+        related_name="rendered_files",
+        blank=True,
+        null=True,
+    )
+    is_original = models.BooleanField(default=False)
+    render_status = models.IntegerField(
+        verbose_name=_("Render Status"),
+        choices=choices.RENDER_STATUS_CHOICES,
+        blank=True,
+        null=True,
+    )
     archived = models.DateTimeField(blank=True, null=True)
 
     class Meta:
         indexes = [
             models.Index(fields=["created"]),
             models.Index(fields=["media_type"]),
+            models.Index(fields=["frame"]),
         ]
 
     def __str__(self):

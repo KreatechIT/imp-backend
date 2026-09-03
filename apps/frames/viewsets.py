@@ -4,7 +4,7 @@ from rest_framework.serializers import ValidationError
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 from apps.frames import models, serializers_create, serializers_get
-from apps.jobs.models import Job
+from apps.jobs.models import Job, TaskFile
 from base import responses
 from core import permissions
 from core.pagination import StandardPagination
@@ -270,3 +270,58 @@ class MemberFrameViewSet(ReadOnlyModelViewSet):
         if aspect_ratio:
             queryset = queryset.filter(aspect_ratio=aspect_ratio)
         return queryset.order_by("ordering", "created")
+
+
+class OriginalContentViewSet(ReadOnlyModelViewSet):
+    """Admin library of raw content members uploaded to be framed."""
+
+    serializer_class = serializers_get.OriginalContentSerializer
+    permission_classes = [permissions.IsAdmin]
+    pagination_class = StandardPagination
+    lookup_field = "uuid"
+    item_key = "Content Id"
+
+    def get_queryset(self):
+        queryset = (
+            TaskFile.objects
+            .filter(is_original=True, archived=None)
+            .select_related(
+                "task__member_job__member__user",
+                "task__member_job__job",
+                "frame",
+            )
+            .order_by("-created")
+        )
+
+        member_uuid = self.request.query_params.get("member_uuid")
+        job_uuid = self.request.query_params.get("job_uuid")
+        from_date = self.request.query_params.get("from_date")
+        to_date = self.request.query_params.get("to_date")
+
+        if member_uuid:
+            queryset = queryset.filter(task__member_job__member__uuid=member_uuid)
+        if job_uuid:
+            queryset = queryset.filter(task__member_job__job__uuid=job_uuid)
+        if from_date:
+            queryset = queryset.filter(created__date__gte=from_date)
+        if to_date:
+            queryset = queryset.filter(created__date__lte=to_date)
+        return queryset
+
+    def destroy(self, request, uuid=None, *args, **kwargs):
+        task_file = self.get_queryset().filter(uuid=uuid).first()
+        if task_file is None:
+            return responses.MissingItemError(
+                item_key=self.item_key, item_id=uuid,
+            ).get_response()
+
+        for rendered in TaskFile.objects.filter(
+            task=task_file.task, frame=task_file.frame, is_original=False,
+        ):
+            rendered.file.delete(save=False)
+            rendered.delete()
+
+        task_file.file.delete(save=False)
+        task_file.delete()
+
+        return responses.SuccessResponse(data={}).get_response()

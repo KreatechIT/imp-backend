@@ -13,6 +13,7 @@ from apps.jobs import (
     models,
     serializers_create,
     serializers_get,
+    tasks,
 )
 from apps.members.models import Member
 from apps.notifications import helper_functions as notifications
@@ -206,9 +207,9 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
         ).first()
 
     @extend_schema(request=serializers_create.TaskContentSerializer)
-    @action(detail=True, methods=["post"])
-    def content(self, request, uuid=None, *args, **kwargs):
-        """The finished reel / photo files for this task."""
+    @action(detail=True, methods=["post"], url_path=r"content/(?P<frame_uuid>[^/.]+)")
+    def content(self, request, uuid=None, frame_uuid=None, *args, **kwargs):
+        """The finished reel / photo files for this task, framed."""
         serializer = serializers_create.TaskContentSerializer(data=request.data)
         try:
             serializer.is_valid(raise_exception=True)
@@ -221,14 +222,25 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
                 item_key=self.item_key, item_id=uuid,
             ).get_response()
 
+        from apps.frames.models import Frame
+
+        frame = Frame.objects.filter(uuid=frame_uuid, archived=None).first()
+        if frame is None:
+            return responses.MissingItemError(
+                item_key="Frame Id", item_id=frame_uuid,
+            ).get_response()
+
         for upload in serializer.validated_data["files"]:
-            models.TaskFile.objects.create(
+            task_file = models.TaskFile.objects.create(
                 task=task,
                 file=upload,
                 media_type=helper_functions.media_type_for(upload.name),
                 original_name=upload.name[:255],
                 size=upload.size,
+                frame=frame,
+                is_original=True,
             )
+            tasks.render_task_file.delay(task_file.id)
 
         data = self.serializer_class(task, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()

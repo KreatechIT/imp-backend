@@ -18,10 +18,11 @@
 
 ## 3. Changelog
 
-**Current version: 1.6** — 2026-09-03
+**Current version: 1.7** — 2026-09-03
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.7 | 2026-09-03 | **Fixed**: `/media/...` responses (frame images, banners, profile pictures, uploaded proof/content files — anything under `MEDIA_URL`) were served with no `Access-Control-Allow-Origin` header at all, because nginx serves `/media/` directly off disk via an `alias`, bypassing Django and `django-cors-headers` entirely. This tainted any `<canvas>` a frontend drew a media image onto (e.g. compositing a frame over a photo for export), blocking `canvas.toDataURL()` / `toBlob()` with a `SecurityError` even though `img.crossOrigin = 'anonymous'` was set correctly client-side. Added `Access-Control-Allow-Origin: * always;` to the `/media/` nginx location block on production. Not a code change in this repo — infra-only fix, see §4 Conventions. |
 | 1.6 | 2026-09-03 | **Added**: Notifications API, `/notifications/` (§35) — an in-app feed for both roles (job posted, task assigned, task submitted, task approved/rejected), with unread count and mark-read/mark-all-read actions. **Changed**: `GET /front-view/influencer/leaderboard/` and `GET /front-view/influencer/rank/{phone_number}/` (§20a, §20b) permission relaxed from `IsAdmin` to `IsAuthenticated` so members can see the leaderboard too. |
 | 1.5 | 2026-09-03 | **Added**: `GET /front-view/influencer/leaderboard/` and `GET /front-view/influencer/rank/{phone_number}/` (§20a, §20b) — server-side proxies to a third-party influencer-marketing platform (`staging-api.kinggroup44.com`), gated with our own `IsAdmin` instead of exposing the upstream's access_code to clients. |
 | 1.4 | 2026-09-03 | **Added**: flat cross-job/cross-org pending applications, `GET /jobs/applications/pending/` and `GET /jobs/applications/pending/{uuid}/` (§16a) — every `status=1` APPLIED member-job across every job/org, paginated, each row carrying its own `job_uuid` and `org_uuid`; alongside the existing job-scoped `/jobs/org/{org_uuid}/job/{job_uuid}/member/` (§16) which is unchanged. Added `org_uuid` field to the `MemberJob` object (§16) — was previously only `org` (name). |
@@ -73,6 +74,8 @@ Query: `page` (int, default 1), `page_size` (int, default 20, max 100).
 | 500 | See §0 Known issues #3 — a malformed (non-UUID) path segment on some routes leaks a stack trace instead of a clean 400. |
 
 **Delete** — no working `DELETE` method anywhere except `/frame/library/{uuid}/`, where `DELETE` is wired to the same soft-delete `archive` logic. Everywhere else, soft delete is `PATCH .../archive/`, which returns the archived object.
+
+**Media files** (`/media/...` — frame images, banners, profile pictures, uploaded proof/content files) are served by nginx directly, not by Django, so `django-cors-headers` does not run on them. As of 1.7, nginx explicitly sends `Access-Control-Allow-Origin: *` on `/media/` responses (needed for `<canvas>`-based image compositing/export in the frontend); `/static/` is not covered by this and still sends no CORS header.
 
 **Dates** — `YYYY-MM-DD`. **Datetimes** — ISO 8601 with `+08:00`. **`period_key`** — `YYYY-MM-DD` (daily), `YYYY-Www` (weekly), `YYYY-MM` (monthly).
 

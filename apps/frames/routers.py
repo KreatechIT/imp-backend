@@ -26,5 +26,8 @@ library_router.register(
     "library", viewsets.FrameLibraryViewSet, basename="frame-library",
 )
 library_router.register(
+    "content", viewsets.OriginalContentViewSet, basename="frame-content",
+)
+library_router.register(
     r'job/(?P<job_uuid>[^/.]+)', viewsets.FrameByJobViewSet, basename="frame-by-job",
 )

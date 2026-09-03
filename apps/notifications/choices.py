@@ -11,4 +11,5 @@ NOTIFICATION_TYPE_CHOICES = (
     (3, _("TASK_SUBMITTED")),
     (4, _("TASK_APPROVED")),
     (5, _("TASK_REJECTED")),
+    (6, _("RENDER_READY")),
 )
