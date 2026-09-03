@@ -34,11 +34,10 @@ def render_content(rendered_content_id):
             for chunk in frame.image.chunks():
                 fh.write(chunk)
 
-        if is_video_content or is_animated_frame:
-            # GIF has no inter-frame compression, so a full-resolution frame
-            # played over many frames balloons to tens of MB; MP4 keeps the
-            # same animation at a fraction of the size.
+        if is_video_content:
             out_ext = ".mp4"
+        elif is_animated_frame:
+            out_ext = ".gif"
         else:
             out_ext = ".jpg"
         out_path = os.path.join(tmp_dir, f"{uuid4().hex}{out_ext}")
@@ -66,14 +65,19 @@ def render_content(rendered_content_id):
             ]
         else:
             if is_animated_frame:
+                # A full-resolution GIF has no inter-frame compression and
+                # balloons to tens of MB over many frames, so the merged
+                # animation is capped to 480px wide / 8fps and quantized
+                # through a generated palette before the final GIF encode.
                 cmd = [
                     "ffmpeg", "-y",
                     "-loop", "1", "-i", content_path,
                     "-i", frame_path,
                     "-filter_complex",
-                    f"{scale_to_frame};[content][frame]overlay=0:0:shortest=1",
-                    "-c:v", "libx264", "-preset", "medium", "-crf", "26",
-                    "-pix_fmt", "yuv420p",
+                    f"{scale_to_frame};[content][frame]overlay=0:0:shortest=1[merged];"
+                    "[merged]fps=8,scale=480:-1:flags=lanczos,split[a][b];"
+                    "[a]palettegen=stats_mode=diff[pal];"
+                    "[b][pal]paletteuse=dither=bayer",
                     out_path,
                 ]
             else:
