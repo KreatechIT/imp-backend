@@ -18,10 +18,11 @@
 
 ## 3. Changelog
 
-**Current version: 1.4** — 2026-09-03
+**Current version: 1.5** — 2026-09-03
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.5 | 2026-09-03 | **Added**: `GET /front-view/influencer/leaderboard/` and `GET /front-view/influencer/rank/{phone_number}/` (§20a, §20b) — server-side proxies to a third-party influencer-marketing platform (`staging-api.kinggroup44.com`), gated with our own `IsAdmin` instead of exposing the upstream's access_code to clients. |
 | 1.4 | 2026-09-03 | **Added**: flat cross-job/cross-org pending applications, `GET /jobs/applications/pending/` and `GET /jobs/applications/pending/{uuid}/` (§16a) — every `status=1` APPLIED member-job across every job/org, paginated, each row carrying its own `job_uuid` and `org_uuid`; alongside the existing job-scoped `/jobs/org/{org_uuid}/job/{job_uuid}/member/` (§16) which is unchanged. Added `org_uuid` field to the `MemberJob` object (§16) — was previously only `org` (name). |
 | 1.3 | 2026-09-03 | **Added**: flat cross-org job list, `GET /jobs/list/` and `GET /jobs/list/{uuid}/` (§12a) — lists jobs across every org without requiring the org uuid in the path, alongside the existing org-scoped `/jobs/org/{org_uuid}/job/` (§12) which is unchanged. Also enabled `CORS_ALLOW_ALL_ORIGINS` (env-driven) on staging. |
 | 1.2 | 2026-09-03 | Full rewrite against the current codebase — previous doc described a stale route layout (`/jobs/companies/`, `/jobs/postings/`, `/front-view/content/`) that no longer exists. **Org/Job routes renamed**: `/jobs/companies/` → `/jobs/org/`, `/jobs/postings/` → `/jobs/org/{org_uuid}/job/`, requirements/frames nested under it accordingly. **Added**: Frame Library API (`/frame/library/`, `/frame/job/{job_uuid}/`) — create/edit/archive a frame from anywhere, not just from inside its job. **Removed**: `/front-view/content/` (member-facing content aggregator) no longer exists in code; members read banners/guides/terms straight off the same admin routes (all of which only require `IsAuthenticated`, not `IsAdmin`) plus the dedicated `public`/`public/{category}` actions. Documented permission class (`IsAdmin` / `IsMember` / `IsAuthenticated`) per section — this was missing before and matters because several "admin" routes are actually only `IsAuthenticated`, see §0 Known issues. Fixed a bug where creating a frame at `/jobs/org/{org}/job/{job}/frames/` always 500'd. |
@@ -787,6 +788,60 @@ All aggregate math (base pay, deduction, total, per-member and summed) was verif
   "deduction": "0.00", "total": "0.00"
 }
 ```
+
+## 20a. Influencer leaderboard (third-party proxy) — `/front-view/influencer/leaderboard/`
+
+`IsAdmin`. Server-side proxy to an external influencer-marketing platform's leaderboard API (`staging-api.kinggroup44.com`). The upstream endpoint is gated only by an `access_code` in its URL; this proxy keeps that code server-side (`INFLUENCER_API_BASE_URL` / `INFLUENCER_API_ACCESS_CODE` env vars) and gates our own callers with `IsAdmin` instead.
+
+| Method | Path |
+|---|---|
+| GET | `/front-view/influencer/leaderboard/` |
+
+No params. Returns the upstream response verbatim — top members ranked by total deposit amount for the current calendar month, with each member's referral stats (registrations and conversions of people they referred, same month). **Not paginated** — a bare array.
+
+```json
+[
+  {
+    "rank": 1,
+    "member_uuid": "uuid",
+    "full_name": "string",
+    "phone_number": "string",
+    "reg_count": 0,
+    "cvs_count": 0,
+    "deposit_amount": "0.00"
+  }
+]
+```
+
+`reg_count` — people this member referred who registered this month. `cvs_count` — of those, how many converted (made ≥1 deposit). `deposit_amount` — this member's own total deposit this month.
+
+**502** `{"error": "Unable to contact third party"}` if the upstream is unreachable or errors.
+
+## 20b. Influencer rank (third-party proxy) — `/front-view/influencer/rank/{phone_number}/`
+
+`IsAdmin`. Same upstream platform as §20a, filtered to one member by phone number.
+
+| Method | Path |
+|---|---|
+| GET | `/front-view/influencer/rank/{phone_number}/` |
+
+```json
+{
+  "member_uuid": "uuid",
+  "full_name": "string",
+  "phone_number": "string",
+  "rank": 1,
+  "reg_count": 0,
+  "cvs_count": 0,
+  "deposit_amount": "0.00",
+  "next_rank": 2,
+  "next_rank_amount": "0.00"
+}
+```
+
+`rank` — `null` if the member made no deposit this month (unranked). `next_rank` / `next_rank_amount` — the rank and deposit total directly above this member, i.e. what they need to beat to move up; both `null` if already rank 1, or if unranked.
+
+**400** if the upstream returns 404 for an unknown phone number. **502** if the upstream is unreachable or errors.
 
 ## 21. Banners — `/front-view/banners/`
 

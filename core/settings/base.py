@@ -217,4 +217,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 IMAGE_STRUCTURE = config("IMAGE_STRUCTURE", default="http://localhost:8000")
 
+INFLUENCER_API_BASE_URL = config("INFLUENCER_API_BASE_URL", default="")
+INFLUENCER_API_ACCESS_CODE = config("INFLUENCER_API_ACCESS_CODE", default="")
+
 ENVIRONMENT = "local"
