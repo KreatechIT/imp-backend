@@ -41,7 +41,7 @@ STATIC_ROOT = config("STATIC_ROOT", default="/var/www/imp-static/")
 
 IMAGE_STRUCTURE = config("IMAGE_STRUCTURE", default="")
 
-CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOW_ALL_ORIGINS = config("CORS_ALLOW_ALL_ORIGINS", default=False, cast=bool)
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = config(
     "CORS_ALLOWED_ORIGINS",

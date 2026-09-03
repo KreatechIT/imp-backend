@@ -18,12 +18,22 @@
 
 ## 3. Changelog
 
-**Current version: 1.1** — 2026-09-02
+**Current version: 1.2** — 2026-09-03
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.2 | 2026-09-03 | Full rewrite against the current codebase — previous doc described a stale route layout (`/jobs/companies/`, `/jobs/postings/`, `/front-view/content/`) that no longer exists. **Org/Job routes renamed**: `/jobs/companies/` → `/jobs/org/`, `/jobs/postings/` → `/jobs/org/{org_uuid}/job/`, requirements/frames nested under it accordingly. **Added**: Frame Library API (`/frame/library/`, `/frame/job/{job_uuid}/`) — create/edit/archive a frame from anywhere, not just from inside its job. **Removed**: `/front-view/content/` (member-facing content aggregator) no longer exists in code; members read banners/guides/terms straight off the same admin routes (all of which only require `IsAuthenticated`, not `IsAdmin`) plus the dedicated `public`/`public/{category}` actions. Documented permission class (`IsAdmin` / `IsMember` / `IsAuthenticated`) per section — this was missing before and matters because several "admin" routes are actually only `IsAuthenticated`, see §0 Known issues. Fixed a bug where creating a frame at `/jobs/org/{org}/job/{job}/frames/` always 500'd. |
 | 1.1 | 2026-09-02 | Added CMS dashboard KPI. Submissions: added `pending/` / `approved/` / `rejected/` shortcuts and `from_date` / `to_date` / `search` filters. Removed `GET /members/profile/audit-log/` (login history is no longer exposed via API). (Internally the `admins` Django app was renamed to `crmadmin` — no API path changed.) 85 endpoints. |
 | 1.0 | 2026-08-31 | Initial release. Covers auth, admin users, activity log, members, companies, jobs, job requirements, frames, submissions, member job applications, job settings, payouts, earnings statistics, KPI, banners, guides, terms, member profile, bank details, platform accounts, job board, tasks, earnings, missed and app content. 82 endpoints. |
+
+## 0. Known issues (as of 1.2, verified by live testing)
+
+These are real, currently-open bugs, listed so API consumers know what to defend against. Not aspirational — everything else in this document describes actually-verified behavior.
+
+1. **Broken object-level authorization (IDOR) on every `/members/{member_uuid}/...` member-facing route.** `MemberJobViewSet`, `AvailableJobViewSet` (+ `apply`), `MemberTaskViewSet` (tasks/submit/content/result), `MemberFrameViewSet`, `EarningsView`, `MissedView`, `MemberPayoutViewSet` only check `IsAuthenticated` — none verify the JWT's own member matches the `{member_uuid}` in the path. Any logged-in member can currently read or act on another member's tasks, earnings, payouts, job applications and frames by swapping the UUID. Do not treat `{member_uuid}` in the path as a security boundary until this is fixed.
+2. **`/front-view/banners/public/`, `/front-view/guides/public/`, `/front-view/terms/public/{category}/` require a valid token**, despite being named/documented as pre-login routes. They inherit `IsAuthenticated` from their viewsets and currently return `401` with no `Authorization` header.
+3. **Malformed UUID in a path segment 500s instead of 400/404** on any endpoint whose action does its own manual `.get(uuid=...)` lookup instead of using DRF's built-in object lookup — this is most custom `@action`s and `create`/`update` overrides across the codebase (Frame, Org, Job, JobRequirement, JobMember approve/reject/complete, Submission approve/reject, MemberTask submit/content/result, BankDetail, PlatformAccount, Payout, Banner, Guide, Terms, Admin). Plain `GET` list/retrieve routes are unaffected — DRF's own `get_object()` already 404s cleanly there.
+4. **Frame Library (`/frame/library/`) is `IsAuthenticated`, not `IsAdmin`**, despite being described internally as the admin frame library — any logged-in member can currently create, edit or archive entries in the shared frame library.
 
 ## 4. Conventions
 
@@ -33,7 +43,7 @@
 Authorization: Bearer <access>
 ```
 
-**Pagination** — every list endpoint.
+**Pagination** — every list endpoint unless noted otherwise.
 
 Query: `page` (int, default 1), `page_size` (int, default 20, max 100).
 
@@ -54,12 +64,21 @@ Query: `page` (int, default 1), `page_size` (int, default 20, max 100).
 | 400 | `{"error": ..., "details": ...}` — `Invalid request` / `Data submitted is invalid` / `Data does not exist` / `Data already exists` / `Data archived` |
 | 401 | `{"detail": "Authentication credentials were not provided."}` |
 | 403 | `{"detail": "You do not have permission to perform this action."}` — wrong role for the endpoint |
-| 403 | `{"error": "Incorrect login credentials", "details": {}}` — login endpoints only |
+| 403 | `{"error": "Incorrect login credentials", "details": {}}` — login endpoints only (deliberate: this project returns 403, not 401, for bad credentials) |
 | 404 | `{"detail": "Not found."}` |
+| 500 | See §0 Known issues #3 — a malformed (non-UUID) path segment on some routes leaks a stack trace instead of a clean 400. |
 
-**Delete** — no `DELETE` method anywhere. Soft delete is `PATCH .../archive/`, which returns the archived object.
+**Delete** — no working `DELETE` method anywhere except `/frame/library/{uuid}/`, where `DELETE` is wired to the same soft-delete `archive` logic. Everywhere else, soft delete is `PATCH .../archive/`, which returns the archived object.
 
 **Dates** — `YYYY-MM-DD`. **Datetimes** — ISO 8601 with `+08:00`. **`period_key`** — `YYYY-MM-DD` (daily), `YYYY-Www` (weekly), `YYYY-MM` (monthly).
+
+**Permission classes** — every section below states which of these gates it:
+
+| Class | Meaning |
+|---|---|
+| `IsAdmin` | valid JWT **and** the user has a linked `Admin` row |
+| `IsMember` | valid JWT **and** the user has a linked `Member` row |
+| `IsAuthenticated` | any valid JWT, admin or member — **not** role-gated. See §0 #1 and #4 for where this is weaker than it should be. |
 
 ## 5. Choices
 
@@ -68,7 +87,7 @@ Query: `page` (int, default 1), `page_size` (int, default 20, max 100).
 | Admin status | `1` ACTIVE, `2` INACTIVE |
 | Member status | `1` ACTIVE, `2` INACTIVE, `3` SUSPENDED |
 | Platform | `1` INSTAGRAM, `2` TIKTOK |
-| Company status | `1` ACTIVE, `2` INACTIVE |
+| Org (company) status | `1` ACTIVE, `2` INACTIVE |
 | Job status | `1` DRAFT, `2` ACTIVE, `3` PAUSED, `4` COMPLETED |
 | Job recurrence | `1` DAILY, `2` WEEKLY, `3` MONTHLY |
 | Payment period | `1` DAILY, `2` WEEKLY, `3` MONTHLY |
@@ -90,20 +109,20 @@ Query: `page` (int, default 1), `page_size` (int, default 20, max 100).
 
 # AUTH
 
-Shared by both roles.
+Shared by both roles. No auth required on any endpoint in this section.
 
 ### `/login/admin-access-token/` · `/login/member-access-token/`
 
-**POST** — no auth.
+**POST**
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `username` | string | yes | |
 | `password` | string | yes | |
-| `ip_address` | string | no | member endpoint only |
+| `ip_address` | string | no | member endpoint only — recorded on a `LoginAudit` row |
 | `device` | string | no | member endpoint only |
 
-**200** — admin: the Admin object + tokens. Member: the Member profile object + tokens.
+**200** — admin: the Admin object + tokens. Member: the full member profile object (see §9 `GET /members/{uuid}/`) + tokens.
 
 ```json
 {
@@ -120,7 +139,7 @@ Shared by both roles.
 }
 ```
 
-`role` is `ADMIN` or `MEMBER`. A member posting to the admin endpoint (or the reverse) → **403** `{"error": "Incorrect login credentials", "details": {}}`.
+`role` is `ADMIN` or `MEMBER`. A member posting to the admin endpoint (or the reverse), or a wrong password → **403** `{"error": "Incorrect login credentials", "details": {}}`.
 
 ### `/login/refresh-token/`
 
@@ -138,9 +157,11 @@ Shared by both roles.
 
 # ADMIN APIs
 
-Everything below requires an **admin** token unless noted.
+Everything below requires an **admin** token (`IsAdmin`) unless the section header says otherwise.
 
 ## 6. Admin users — `/admins/users/`
+
+`IsAdmin`.
 
 | Method | Path |
 |---|---|
@@ -186,6 +207,8 @@ Everything below requires an **admin** token unless noted.
 
 ## 7. Activity log — `/admins/activity-log/`
 
+`IsAdmin`. Read-only.
+
 | Method | Path |
 |---|---|
 | GET | `/admins/activity-log/` |
@@ -199,7 +222,7 @@ Everything below requires an **admin** token unless noted.
 
 ## 8. Dashboard KPI — `/admins/dashboard/kpi/`
 
-The 4 tiles on the CMS dashboard.
+`IsAdmin`. The 4 tiles on the CMS dashboard.
 
 | Method | Path |
 |---|---|
@@ -224,6 +247,8 @@ The 4 tiles on the CMS dashboard.
 ```
 
 ## 9. Members — `/members/`
+
+`IsAdmin`.
 
 | Method | Path |
 |---|---|
@@ -290,7 +315,9 @@ The 4 tiles on the CMS dashboard.
 }
 ```
 
-## 10. Member bank details (read-only) — `/members/{member_uuid}/bank-details/`
+## 10. Member bank details (read-only, admin view) — `/members/{member_uuid}/bank-details/`
+
+`IsAdmin`.
 
 | Method | Path |
 |---|---|
@@ -306,24 +333,39 @@ The 4 tiles on the CMS dashboard.
 }
 ```
 
-## 11. Companies — `/jobs/companies/`
+## 10a. Member login audit (read-only, admin view) — `/members/{member_uuid}/audit_login/`
+
+`IsAdmin`.
 
 | Method | Path |
 |---|---|
-| GET | `/jobs/companies/` |
-| POST | `/jobs/companies/` |
-| GET | `/jobs/companies/{uuid}/` |
-| PUT / PATCH | `/jobs/companies/{uuid}/` |
-| PATCH | `/jobs/companies/{uuid}/archive/` |
+| GET | `/members/{member_uuid}/audit_login/` |
+| GET | `/members/{member_uuid}/audit_login/{uuid}/` |
 
-**Query**: `name` (icontains), `status` (int, company status), `page`, `page_size`.
+```json
+{ "uuid": "uuid", "datetime": "datetime", "ip_address": "string|null", "device": "string|null" }
+```
+
+## 11. Orgs — `/jobs/org/`
+
+`IsAdmin`. (Path segment is `org`, not `companies` — the underlying model is still called `Company` internally, but every URL and JSON field uses "org".)
+
+| Method | Path |
+|---|---|
+| GET | `/jobs/org/` |
+| POST | `/jobs/org/` |
+| GET | `/jobs/org/{org_uuid}/` |
+| PUT / PATCH | `/jobs/org/{org_uuid}/` |
+| PATCH | `/jobs/org/{org_uuid}/archive/` |
+
+**Query**: `name` (icontains), `status` (int, org status), `page`, `page_size`.
 
 **POST / PUT / PATCH** *(multipart if `logo`)*
 
 | Field | Type | Required (POST) | Notes |
 |---|---|---|---|
 | `name` | string | yes | unique |
-| `status` | int | no | company status, default `1` |
+| `status` | int | no | org status, default `1` |
 | `telegram_link` | url | no | max 500 |
 | `logo` | file | no | image |
 
@@ -337,23 +379,24 @@ All fields optional on PUT / PATCH.
 }
 ```
 
-## 12. Jobs — `/jobs/postings/`
+## 12. Jobs — `/jobs/org/{org_uuid}/job/`
+
+`IsAdmin`. Every job hangs off one org, so the org uuid is in the path, not the body.
 
 | Method | Path |
 |---|---|
-| GET | `/jobs/postings/` |
-| POST | `/jobs/postings/` |
-| GET | `/jobs/postings/{uuid}/` |
-| PUT / PATCH | `/jobs/postings/{uuid}/` |
-| PATCH | `/jobs/postings/{uuid}/archive/` |
+| GET | `/jobs/org/{org_uuid}/job/` |
+| POST | `/jobs/org/{org_uuid}/job/` |
+| GET | `/jobs/org/{org_uuid}/job/{uuid}/` |
+| PUT / PATCH | `/jobs/org/{org_uuid}/job/{uuid}/` |
+| PATCH | `/jobs/org/{org_uuid}/job/{uuid}/archive/` |
 
-**Query**: `company_uuid`, `status` (int, job status), `title` (icontains), `page`, `page_size`.
+**Query**: `status` (int, job status), `title` (icontains), `page`, `page_size`.
 
 **POST**
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `company_uuid` | uuid | yes | must be an unarchived company |
 | `title` | string | yes | |
 | `description` | string | no | |
 | `recurrence` | int | no | job recurrence, default `1` |
@@ -367,12 +410,12 @@ All fields optional on PUT / PATCH.
 
 `requirements[]`: `platform` (int, required), `content_type` (int, required), `quantity` (int, ≥ 1, default `1`).
 
-**PUT / PATCH** — same scalar fields, all optional. `requirements` is **not** accepted here; use the requirements endpoints.
+**PUT / PATCH** — same scalar fields, all optional. `requirements` is **not** accepted here; use the requirements endpoint (§13).
 
 ```json
 {
   "uuid": "uuid",
-  "company": "string", "company_uuid": "uuid", "company_logo": "url|null",
+  "org": "string", "org_uuid": "uuid", "org_logo": "url|null",
   "title": "string", "description": "string|null",
   "recurrence": 1, "payment_amount": "0.00", "payment_period": 3,
   "deduction_per_miss": "0.00|null",
@@ -385,17 +428,19 @@ All fields optional on PUT / PATCH.
 }
 ```
 
-`is_live` = status `2` **and** not archived **and** now is between `start_date` and `end_date`.
+`is_live` = status `2` **and** not archived **and** now is between `start_date` and `end_date`. Verified by live testing against a real job.
 
-## 13. Job requirements — `/jobs/postings/{job_uuid}/requirements/`
+## 13. Job requirements — `/jobs/org/{org_uuid}/job/{job_uuid}/requirement/`
+
+`IsAdmin`.
 
 | Method | Path |
 |---|---|
-| GET | `/jobs/postings/{job_uuid}/requirements/` |
-| POST | `/jobs/postings/{job_uuid}/requirements/` |
-| GET | `/jobs/postings/{job_uuid}/requirements/{uuid}/` |
-| PUT / PATCH | `/jobs/postings/{job_uuid}/requirements/{uuid}/` |
-| PATCH | `/jobs/postings/{job_uuid}/requirements/{uuid}/archive/` |
+| GET | `/jobs/org/{org_uuid}/job/{job_uuid}/requirement/` |
+| POST | `/jobs/org/{org_uuid}/job/{job_uuid}/requirement/` |
+| GET | `/jobs/org/{org_uuid}/job/{job_uuid}/requirement/{uuid}/` |
+| PUT / PATCH | `/jobs/org/{org_uuid}/job/{job_uuid}/requirement/{uuid}/` |
+| PATCH | `/jobs/org/{org_uuid}/job/{job_uuid}/requirement/{uuid}/archive/` |
 
 | Field | Type | Required (POST) | Notes |
 |---|---|---|---|
@@ -403,21 +448,23 @@ All fields optional on PUT / PATCH.
 | `content_type` | int | yes | content type |
 | `quantity` | int | no | ≥ 1, default `1` |
 
-`platform` + `content_type` is unique per unarchived job → duplicate returns **400** `Data already exists`.
+`platform` + `content_type` is unique per unarchived job → duplicate returns **400** `Data already exists`. Verified by live testing.
 
 ```json
 { "uuid": "uuid", "platform": 1, "content_type": 1, "quantity": 1 }
 ```
 
-## 14. Frames — `/jobs/postings/{job_uuid}/frames/`
+## 14. Frames on a job — `/jobs/org/{org_uuid}/job/{job_uuid}/frames/`
+
+`IsAuthenticated` (not `IsAdmin` — any logged-in user, admin or member, can read/write here; see §0 #1 for why that matters combined with the member-facing routes).
 
 | Method | Path |
 |---|---|
-| GET | `/jobs/postings/{job_uuid}/frames/` |
-| POST | `/jobs/postings/{job_uuid}/frames/` |
-| GET | `/jobs/postings/{job_uuid}/frames/{uuid}/` |
-| PUT / PATCH | `/jobs/postings/{job_uuid}/frames/{uuid}/` |
-| PATCH | `/jobs/postings/{job_uuid}/frames/{uuid}/archive/` |
+| GET | `/jobs/org/{org_uuid}/job/{job_uuid}/frames/` |
+| POST | `/jobs/org/{org_uuid}/job/{job_uuid}/frames/` |
+| GET | `/jobs/org/{org_uuid}/job/{job_uuid}/frames/{uuid}/` |
+| PUT / PATCH | `/jobs/org/{org_uuid}/job/{job_uuid}/frames/{uuid}/` |
+| PATCH | `/jobs/org/{org_uuid}/job/{job_uuid}/frames/{uuid}/archive/` |
 
 **Query**: `media_type` (int — matches that type **and** `1` BOTH), `status` (int, frame status), `page`, `page_size`.
 
@@ -426,17 +473,18 @@ All fields optional on PUT / PATCH.
 | Field | Type | Required (POST) | Notes |
 |---|---|---|---|
 | `name` | string | yes | |
+| `job_uuid` | uuid | yes on POST | must match the `{job_uuid}` already in the URL — the job comes from the path, this field is accepted but not otherwise used to look anything up on this route (it exists because the same request serializer is shared with the Frame Library API, §14a) |
 | `image` | file | yes | PNG with an alpha channel; size-validated |
 | `aspect_ratio` | int | no | frame aspect ratio, default `1` |
 | `media_type` | int | no | frame media type, default `1` |
 | `ordering` | int | no | ≥ 0, default `0` |
 | `status` | int | no | frame status, default `1` |
 
-All optional on PUT / PATCH. A non-transparent image returns **400**.
+All optional on PUT / PATCH (`job_uuid` included — if given on PUT/PATCH, it does not move the frame to another job on this route, unlike the Library API's PATCH). A non-transparent image returns **400**.
 
 ```json
 {
-  "uuid": "uuid", "job_uuid": "uuid", "job_title": "string", "company": "string",
+  "uuid": "uuid", "job_uuid": "uuid", "job_title": "string", "org": "string",
   "name": "string", "image": "url",
   "aspect_ratio": 1, "media_type": 1, "ordering": 0,
   "status": 1, "is_live": true,
@@ -444,26 +492,81 @@ All optional on PUT / PATCH. A non-transparent image returns **400**.
 }
 ```
 
-## 15. Submissions — `/jobs/submissions/`
+**Fixed in 1.2**: POST to this route previously always returned **500** (`Frame() got unexpected keyword arguments: 'job_uuid'`) because `job_uuid` was passed straight into `Frame.objects.create()` without being removed first. Verified working (**201**) after the fix.
+
+## 14a. Frame library (all jobs) — `/frame/library/`
+
+`IsAuthenticated` — see §0 #4; this is currently reachable by members too, not just admins.
+
+Same `Frame` model and object shape as §14, but not nested under a job path — you address a frame by its own uuid, and tell the API which job it belongs to via `job_uuid` in the body instead of the URL.
 
 | Method | Path |
 |---|---|
-| GET | `/jobs/submissions/` |
-| GET | `/jobs/submissions/pending/` |
-| GET | `/jobs/submissions/approved/` |
-| GET | `/jobs/submissions/rejected/` |
-| GET | `/jobs/submissions/{uuid}/` |
-| PATCH | `/jobs/submissions/{uuid}/approve/` |
-| PATCH | `/jobs/submissions/{uuid}/reject/` |
+| GET | `/frame/library/` |
+| POST | `/frame/library/` |
+| GET | `/frame/library/{uuid}/` |
+| PUT / PATCH | `/frame/library/{uuid}/` |
+| DELETE | `/frame/library/{uuid}/` — soft delete, same as `archive` below |
+| PATCH | `/frame/library/{uuid}/archive/` |
 
-`pending/`, `approved/`, `rejected/` are `/jobs/submissions/` pre-filtered to `status = 2` / `3` / `4` respectively — every query param below still applies on them, `status` is just ignored there (fixed by the path).
+**Query**: `job_uuid` (uuid, filter to one job), `media_type` (int — matches that type **and** `1` BOTH), `status` (int, frame status), `page`, `page_size`.
+
+**POST** *(multipart)*
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `name` | string | yes | |
+| `job_uuid` | uuid | yes | must be an unarchived job; **404** `Job Id` if not found |
+| `image` | file | yes | PNG with an alpha channel; size-validated |
+| `aspect_ratio` | int | no | frame aspect ratio, default `1` |
+| `media_type` | int | no | frame media type, default `1` |
+| `ordering` | int | no | ≥ 0, default `0` |
+| `status` | int | no | frame status, default `1` |
+
+**PUT / PATCH** *(multipart)* — same fields, all optional. If `job_uuid` is given, the frame is moved to that job (must also be an unarchived job, else **404**).
+
+```json
+{
+  "uuid": "uuid", "job_uuid": "uuid", "job_title": "string", "org": "string",
+  "name": "string", "image": "url",
+  "aspect_ratio": 1, "media_type": 1, "ordering": 0,
+  "status": 1, "is_live": true,
+  "created": "datetime", "modified": "datetime"
+}
+```
+
+## 14b. Frames for one job (read-only) — `/frame/job/{job_uuid}/`
+
+`IsAuthenticated`. Genuinely read-only — `POST` correctly returns **405**, unlike §14/§14a.
+
+| Method | Path |
+|---|---|
+| GET | `/frame/job/{job_uuid}/` |
+| GET | `/frame/job/{job_uuid}/{uuid}/` |
+
+**Query**: `media_type` (int), `status` (int), `page`, `page_size`. Object as in §14.
+
+## 15. Submissions — `/jobs/job/{job_uuid}/submission/`
+
+`IsAdmin`.
+
+| Method | Path |
+|---|---|
+| GET | `/jobs/job/{job_uuid}/submission/` |
+| GET | `/jobs/job/{job_uuid}/submission/pending/` |
+| GET | `/jobs/job/{job_uuid}/submission/approved/` |
+| GET | `/jobs/job/{job_uuid}/submission/rejected/` |
+| GET | `/jobs/job/{job_uuid}/submission/{uuid}/` |
+| PATCH | `/jobs/job/{job_uuid}/submission/{uuid}/approve/` |
+| PATCH | `/jobs/job/{job_uuid}/submission/{uuid}/reject/` |
+
+`pending/`, `approved/`, `rejected/` are `/submission/` pre-filtered to `status = 2` / `3` / `4` respectively — every query param below still applies on them, `status` is just ignored there (fixed by the path).
 
 **Query**
 
 | Param | Notes |
 |---|---|
 | `status` | `1` pending (not submitted, period still open) · `2` awaiting review · `3` approved · `4` rejected · `5` missed (not submitted, period closed). Omitted → every submitted task. Ignored on `/pending/`, `/approved/`, `/rejected/`. |
-| `job_uuid` | |
 | `member_uuid` | |
 | `period_key` | exact |
 | `from_date` / `to_date` | filters on `submitted_at`'s date; either may be given alone |
@@ -480,7 +583,7 @@ All optional on PUT / PATCH. A non-transparent image returns **400**.
 {
   "uuid": "uuid",
   "member": "full name", "member_uuid": "uuid",
-  "company": "string", "job_title": "string", "member_job_uuid": "uuid",
+  "org": "string", "job_title": "string", "member_job_uuid": "uuid",
   "platform": 1, "content_type": 1, "quantity": 1,
   "period_key": "2026-08-31", "period_start": "date", "period_end": "date",
   "status": 2,
@@ -497,22 +600,22 @@ All optional on PUT / PATCH. A non-transparent image returns **400**.
 }
 ```
 
-## 16. Member job applications — `/members/{member_uuid}/jobs/`
+## 16. Member job applications, admin side — `/jobs/org/{org_uuid}/job/{job_uuid}/member/`
 
-GET is open to any authenticated user; the write actions are **admin only** (a member calling them gets **400** `Can only be triggered by admins`).
+`IsAdmin`. Who applied to this job, and the decision on each application.
 
 | Method | Path |
 |---|---|
-| GET | `/members/{member_uuid}/jobs/` |
-| GET | `/members/{member_uuid}/jobs/{uuid}/` |
-| PATCH | `/members/{member_uuid}/jobs/{uuid}/` |
-| PATCH | `/members/{member_uuid}/jobs/{uuid}/approve/` |
-| PATCH | `/members/{member_uuid}/jobs/{uuid}/reject/` |
-| PATCH | `/members/{member_uuid}/jobs/{uuid}/complete/` |
+| GET | `/jobs/org/{org_uuid}/job/{job_uuid}/member/` |
+| GET | `/jobs/org/{org_uuid}/job/{job_uuid}/member/{uuid}/` |
+| PATCH | `/jobs/org/{org_uuid}/job/{job_uuid}/member/{uuid}/` |
+| PATCH | `/jobs/org/{org_uuid}/job/{job_uuid}/member/{uuid}/approve/` |
+| PATCH | `/jobs/org/{org_uuid}/job/{job_uuid}/member/{uuid}/reject/` |
+| PATCH | `/jobs/org/{org_uuid}/job/{job_uuid}/member/{uuid}/complete/` |
 
-**Query**: `status` (int, member job status), `page`, `page_size`.
+**Query**: `status` (int, member job status), `search` (name / username / phone), `page`, `page_size`.
 
-**PATCH** *(body)*
+**PATCH** *(body)* — the escape hatch: sets any field directly, no state guard.
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
@@ -520,17 +623,17 @@ GET is open to any authenticated user; the write actions are **admin only** (a m
 | `affiliate_link` | url | no | max 500 |
 | `affiliate_link_status` | int | no | affiliate link status |
 
-**PATCH approve** — `affiliate_link` (url, optional). Sets `status = 2`, `joined = today`; if a link is given, also `affiliate_link_status = 3`.
+**PATCH approve** — `affiliate_link` (url, optional). **400** if already reviewed. Sets `status = 2`, `joined = today`; if a link is given, also `affiliate_link_status = 3`.
 
-**PATCH reject** — no body. Sets `status = 4`.
+**PATCH reject** — no body. **400** if already reviewed. Sets `status = 4`.
 
-**PATCH complete** — no body. Sets `status = 3`, `completed = today`.
+**PATCH complete** — no body. **400** unless currently active (`status = 2`). Sets `status = 3`, `completed = today`.
 
 ```json
 {
   "uuid": "uuid",
   "member": "full name", "member_uuid": "uuid", "username": "string",
-  "company": "string", "company_logo": "url|null",
+  "org": "string", "org_logo": "url|null",
   "job_uuid": "uuid", "job_title": "string",
   "payment_amount": "0.00", "payment_period": 3, "recurrence": 1,
   "status": 2, "affiliate_link": "url|null", "affiliate_link_status": 1,
@@ -539,9 +642,11 @@ GET is open to any authenticated user; the write actions are **admin only** (a m
 }
 ```
 
+`has_frames` = the job has at least one active, unarchived frame. Verified by live testing (flips `true` the moment a frame is created on the job).
+
 ## 17. Job settings — `/jobs/settings/`
 
-Singleton. Created on first GET.
+`IsAdmin`. Singleton, created on first GET.
 
 | Method | Path |
 |---|---|
@@ -568,6 +673,8 @@ Singleton. Created on first GET.
 ```
 
 ## 18. Payouts — `/earnings/payouts/`
+
+`IsAdmin`. Note: despite being a `ReadOnlyModelViewSet`, `create`/`update` are real, reachable methods here — DRF wires routes by method presence, not base class, so POST/PUT/PATCH all work. Confirmed by live testing (POST → **201**, persisted).
 
 | Method | Path |
 |---|---|
@@ -605,6 +712,8 @@ One payout per member per `period_key` → duplicate returns **400** `Data alrea
 
 ## 19. Earnings statistics — `/earnings/statistics/`
 
+`IsAdmin`.
+
 **GET**
 
 | Param | Type | Notes |
@@ -637,9 +746,11 @@ One payout per member per `period_key` → duplicate returns **400** `Data alrea
 }
 ```
 
+All aggregate math (base pay, deduction, total, per-member and summed) was verified by live testing against hand-computed expected values and matched exactly.
+
 ## 20. Earnings KPI — `/earnings/kpi/`
 
-**GET** — no params. Current month, all members.
+`IsAdmin`. No params. Current month, all members.
 
 ```json
 {
@@ -651,15 +762,20 @@ One payout per member per `period_key` → duplicate returns **400** `Data alrea
 
 ## 21. Banners — `/front-view/banners/`
 
+`IsAuthenticated` for everything except `public/`, which is documented as open but currently also requires auth — see §0 #2.
+
 | Method | Path |
 |---|---|
 | GET | `/front-view/banners/` |
+| GET | `/front-view/banners/public/` |
 | POST | `/front-view/banners/` |
 | GET | `/front-view/banners/{uuid}/` |
 | PUT / PATCH | `/front-view/banners/{uuid}/` |
 | PATCH | `/front-view/banners/{uuid}/archive/` |
 
-**Query**: `location` (int, banner location), `page`, `page_size`.
+**Query (list)**: `location` (int, banner location), `page`, `page_size`.
+
+**`public/`** — live banners (`active_from`/`active_until` window contains now, unarchived) — bare array, **not paginated**. Same `location` query param.
 
 **POST / PUT / PATCH** *(multipart if `image`)*
 
@@ -683,15 +799,20 @@ One payout per member per `period_key` → duplicate returns **400** `Data alrea
 
 ## 22. Guides — `/front-view/guides/`
 
+`IsAuthenticated` for everything, including `public/` — see §0 #2 (naming implies open access, code disagrees).
+
 | Method | Path |
 |---|---|
 | GET | `/front-view/guides/` |
+| GET | `/front-view/guides/public/` |
 | POST | `/front-view/guides/` |
 | GET | `/front-view/guides/{uuid}/` |
 | PUT / PATCH | `/front-view/guides/{uuid}/` |
 | PATCH | `/front-view/guides/{uuid}/archive/` |
 
-**Query**: `location` (int, guide location), `page`, `page_size`.
+**Query (list)**: `location` (int, guide location), `page`, `page_size`.
+
+**`public/`** — bare array, **not paginated**. Same `location` query param.
 
 | Field | Type | Required (POST) | Notes |
 |---|---|---|---|
@@ -707,14 +828,17 @@ One payout per member per `period_key` → duplicate returns **400** `Data alrea
 
 ## 23. Terms & conditions — `/front-view/terms/`
 
+`IsAuthenticated` for the CRUD routes. The single-category public read is a separate view — see §0 #2, it currently also requires auth despite the docstring's stated intent.
+
 | Method | Path |
 |---|---|
 | GET | `/front-view/terms/` |
 | POST | `/front-view/terms/` |
 | GET | `/front-view/terms/{uuid}/` |
 | PUT / PATCH | `/front-view/terms/{uuid}/` |
+| GET | `/front-view/terms/public/{category}/` |
 
-No archive action.
+No archive action on this model.
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
@@ -727,13 +851,21 @@ PUT / PATCH accept `content` only.
 { "uuid": "uuid", "category": 1, "content": "<p>html</p>", "modified": "datetime" }
 ```
 
+**GET `public/{category}/`** — never 404s; a category with no row yet returns `{"content": ""}`. Otherwise:
+
+```json
+{ "content": "<p>html</p>" }
+```
+
 ---
 
 # MEMBER APIs
 
-Requires a **member** token, except where marked. `{member_uuid}` is the logged-in member's own `uuid` (returned by the login response).
+Requires a **member** token, except where marked. `{member_uuid}` is the logged-in member's own `uuid` (returned by the login response) — **but see §0 #1: the routes below do not currently verify that the token's own member matches this path segment.**
 
 ## 24. Profile — `/members/profile/`
+
+`IsMember`.
 
 | Method | Path |
 |---|---|
@@ -746,6 +878,8 @@ Response is the full member profile — see §9 `GET /members/{uuid}/`.
 
 ## 25. Change password — `/members/profile/change-password/`
 
+`IsMember`.
+
 **PATCH**
 
 | Field | Type | Required |
@@ -757,6 +891,8 @@ Response is the full member profile — see §9 `GET /members/{uuid}/`.
 **200** `{ "message": "Password updated" }` · **400** `Current password is incorrect`.
 
 ## 26. Own bank details — `/members/profile/bank-details/`
+
+`IsMember`.
 
 | Method | Path |
 |---|---|
@@ -773,12 +909,16 @@ Response is the full member profile — see §9 `GET /members/{uuid}/`.
 | `account_number` | string | yes | |
 | `is_primary` | bool | no | default `true`; setting it clears the flag on the member's other accounts |
 
+Verified by live testing: setting a second account as primary correctly un-sets the flag on the first.
+
 ```json
 { "uuid": "uuid", "bank": 2, "account_holder_name": "string",
   "account_number": "string", "is_primary": true }
 ```
 
 ## 27. Platform accounts — `/members/profile/platform-accounts/`
+
+`IsMember`.
 
 | Method | Path |
 |---|---|
@@ -803,13 +943,15 @@ Duplicate platform → **400** `Data already exists`.
 
 ## 28. Job board — `/members/{member_uuid}/available-jobs/`
 
+`IsAuthenticated` — see §0 #1.
+
 | Method | Path |
 |---|---|
 | GET | `/members/{member_uuid}/available-jobs/` |
 | GET | `/members/{member_uuid}/available-jobs/{uuid}/` |
 | POST | `/members/{member_uuid}/available-jobs/{uuid}/apply/` |
 
-Lists jobs with `status = 2` (ACTIVE) and not archived.
+Lists jobs with `status = 2` (ACTIVE) and not archived, within their `start_date`/`end_date` window.
 
 **POST apply** — no body. **201** with the new member-job object (§16), `status = 1` APPLIED.
 **400** `Job is not open for applications` if the job is not live; **400** `Already applied to this job` on a repeat.
@@ -822,9 +964,13 @@ Response is the job object (§12) plus:
 
 ## 29. My jobs — `/members/{member_uuid}/jobs/`
 
-**GET** only for members — see §16 for the object and the `status` query param. The PATCH actions on this path are admin-only.
+`IsAuthenticated` — see §0 #1. **GET** only — this route is read-only for everyone; the write actions on a member's job application live under §16 and are `IsAdmin`.
+
+Object and `status` query param as in §16.
 
 ## 30. Frames for a job — `/members/{member_uuid}/jobs/{job_uuid}/frames/`
+
+`IsAuthenticated` — see §0 #1.
 
 | Method | Path |
 |---|---|
@@ -838,6 +984,8 @@ Returns only frames with `status = 1` on a job the member holds with `status = 2
 Object as in §14.
 
 ## 31. Tasks — `/members/{member_uuid}/tasks/`
+
+`IsAuthenticated` — see §0 #1.
 
 | Method | Path |
 |---|---|
@@ -889,7 +1037,9 @@ Every one of these returns the task object — see §15.
 
 ## 32. Earnings — `/members/{member_uuid}/earnings/`
 
-**GET** — current month, no params. The period still in progress is excluded from `posted_count`, `missed_count` and `deduction`; it is only counted once `period_end` has passed.
+`IsAuthenticated` — see §0 #1.
+
+**GET** — current month, no params. The period still in progress is excluded from `posted_count`, `missed_count` and `deduction`; it is only counted once `period_end` has passed. Verified by live testing: base pay, cycle counting, missed/posted counts and deduction math all matched hand-computed expected values exactly.
 
 ```json
 {
@@ -898,7 +1048,7 @@ Every one of these returns the task object — see §15.
   "deduction": "0.00", "total": "0.00",
   "jobs": [
     {
-      "member_job_uuid": "uuid", "company": "string", "job_title": "string",
+      "member_job_uuid": "uuid", "org": "string", "job_title": "string",
       "payment_amount": "0.00", "payment_period": 3, "cycles": 1,
       "base_pay": "0.00", "missed_count": 0, "posted_count": 0,
       "deduction": "0.00", "total": "0.00"
@@ -909,6 +1059,8 @@ Every one of these returns the task object — see §15.
 
 ## 33. Missed — `/members/{member_uuid}/missed/`
 
+`IsAuthenticated` — see §0 #1.
+
 **GET** — current month, no params. Excludes the period still in progress.
 
 ```json
@@ -916,7 +1068,7 @@ Every one of these returns the task object — see §15.
   "period_key": "2026-08", "from_date": "date", "to_date": "date",
   "missed_count": 0, "deduction": "0.00",
   "days": [
-    { "member_job_uuid": "uuid", "company": "string", "job_title": "string",
+    { "member_job_uuid": "uuid", "org": "string", "job_title": "string",
       "period_key": "2026-08-14", "period_start": "date", "period_end": "date",
       "deduction": "0.00" }
   ]
@@ -925,24 +1077,17 @@ Every one of these returns the task object — see §15.
 
 ## 34. My payouts — `/members/{member_uuid}/payouts/`
 
+`IsAuthenticated` — see §0 #1. Read-only.
+
 | Method | Path |
 |---|---|
 | GET | `/members/{member_uuid}/payouts/` |
 | GET | `/members/{member_uuid}/payouts/{uuid}/` |
 
-Read-only. Object as in §18.
+Object as in §18.
 
-## 35. App content — `/front-view/content/`
+---
 
-Members only. The live, member-facing read of banners / guides / terms.
+## Removed since 1.1
 
-| Method | Path | Query |
-|---|---|---|
-| GET | `/front-view/content/` | `location` (int, banner location), `page`, `page_size` |
-| GET | `/front-view/content/{uuid}/` | |
-| GET | `/front-view/content/guides/` | `location` (int, guide location) |
-| GET | `/front-view/content/terms/` | `category` (int, terms category) |
-
-`/content/` returns only banners whose `active_from` / `active_until` window contains now — paginated, object as in §21.
-
-`guides/` and `terms/` return **bare arrays**, not paginated — objects as in §22 and §23.
+- `GET /front-view/content/`, `GET /front-view/content/{uuid}/`, `GET /front-view/content/guides/`, `GET /front-view/content/terms/` — this member-facing content-aggregator view no longer exists in the codebase. Members currently read banners/guides/terms directly off the admin routes in §21–23, all of which are `IsAuthenticated` (not `IsAdmin`), plus the `public`/`public/{category}` actions described there (which, per §0 #2, currently still require a token despite the intent).
