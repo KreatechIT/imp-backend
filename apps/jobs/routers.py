@@ -11,6 +11,8 @@ job_router.register(
     viewsets.JobViewSet,
     basename="job",
 )
+# Flat, cross-org job list alongside the org-scoped route above: /jobs/list/
+job_router.register("list", viewsets.JobListViewSet, basename="job-list")
 job_router.register(
     r'org/(?P<org_uuid>[^/.]+)/job/(?P<job_uuid>[^/.]+)/requirement',
     viewsets.JobRequirementViewSet,

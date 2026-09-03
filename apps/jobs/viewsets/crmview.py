@@ -233,6 +233,40 @@ class JobViewSet(OrgScopedMixin, ReadOnlyModelViewSet):
         return responses.SuccessResponse(data=data).get_response()
 
 
+class JobListViewSet(ReadOnlyModelViewSet):
+    """Flat, cross-org job list — /jobs/list/. Read-only.
+
+    JobViewSet above stays org-scoped for the admin CRUD flow; this exists
+    alongside it for callers that just need every job (with its uuid)
+    without knowing the org uuid up front.
+    """
+
+    serializer_class = serializers_get.JobSerializer
+    permission_classes = [permissions.IsAdmin]
+    pagination_class = StandardPagination
+    lookup_field = "uuid"
+    item_key = "Job Id"
+
+    def get_queryset(self):
+        queryset = (
+            models.Job.objects
+            .filter(archived=None)
+            .select_related("company")
+            .prefetch_related("requirements")
+            .order_by("-created")
+        )
+        org_uuid = self.request.query_params.get("org_uuid")
+        status = self.request.query_params.get("status")
+        title = self.request.query_params.get("title")
+        if org_uuid:
+            queryset = queryset.filter(company__uuid=org_uuid)
+        if status:
+            queryset = queryset.filter(status=status)
+        if title:
+            queryset = queryset.filter(title__icontains=title)
+        return queryset
+
+
 class JobRequirementViewSet(OrgScopedMixin, ReadOnlyModelViewSet):
     serializer_class = serializers_get.JobRequirementSerializer
     permission_classes = [permissions.IsAdmin]
