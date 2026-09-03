@@ -56,7 +56,9 @@ class FrameViewSet(ReadOnlyModelViewSet):
                 item_key="Job Id", item_id=self.kwargs.get("job_uuid"),
             ).get_response()
 
-        frame = models.Frame.objects.create(job=job, **serializer.validated_data)
+        validated_data = dict(serializer.validated_data)
+        validated_data.pop("job_uuid", None)
+        frame = models.Frame.objects.create(job=job, **validated_data)
 
         data = self.serializer_class(frame, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
