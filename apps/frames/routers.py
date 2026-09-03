@@ -17,3 +17,14 @@ member_router.register(
     viewsets.MemberFrameViewSet,
     basename="member-frames",
 )
+
+# Flat frame-library routes, addressed by frame uuid rather than nested
+# under an org/job path. SimpleRouter: DefaultRouter's api root view
+# can't cope with the regex-prefixed job/<uuid> registration below.
+library_router = routers.SimpleRouter()
+library_router.register(
+    "library", viewsets.FrameLibraryViewSet, basename="frame-library",
+)
+library_router.register(
+    r'job/(?P<job_uuid>[^/.]+)', viewsets.FrameByJobViewSet, basename="frame-by-job",
+)

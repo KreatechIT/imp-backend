@@ -19,6 +19,7 @@ urlpatterns = [
     path("members/", include(("apps.members.urls", "members"), namespace="members")),
     path("jobs/", include(("apps.frames.urls", "frames"), namespace="frames")),
     path("jobs/", include(("apps.jobs.urls", "jobs"), namespace="jobs")),
+    path("frame/", include(("apps.frames.library_urls", "frame-library"), namespace="frame-library")),
     path("front-view/", include(("apps.front_view.urls", "front-view"), namespace="front-view")),
     path("earnings/", include(("apps.earnings.urls", "earnings"), namespace="earnings")),
 

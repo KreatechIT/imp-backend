@@ -6,6 +6,7 @@ from core import encryption
 
 class FrameSerializer(serializers.Serializer):
     name = serializers.CharField(required=True)
+    job_uuid = serializers.UUIDField(required=True)
     # Model validators only run on full_clean(), which objects.create()
     # skips, so the checks are repeated here where they actually fire.
     image = serializers.ImageField(
@@ -29,6 +30,7 @@ class FrameSerializer(serializers.Serializer):
 
 class EditFrameSerializer(FrameSerializer):
     name = serializers.CharField(required=False)
+    job_uuid = serializers.UUIDField(required=False)
     image = serializers.ImageField(
         required=False,
         validators=[
