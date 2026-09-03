@@ -15,6 +15,7 @@ from apps.jobs import (
     serializers_get,
 )
 from apps.members.models import Member
+from apps.notifications import helper_functions as notifications
 from base import responses
 from core import permissions
 from core.pagination import StandardPagination
@@ -188,6 +189,12 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
             proof_link=validated_data.get("proof_link"),
             proof_file=validated_data.get("proof_file"),
             note=validated_data.get("note"),
+        )
+
+        notifications.notify_admins(
+            notification_type=3,
+            title="New submission",
+            message=str(task.requirement),
         )
 
         data = self.serializer_class(task, context={"request": self.request}).data

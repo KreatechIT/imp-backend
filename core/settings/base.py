@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "apps.front_view",
     "apps.earnings",
     "apps.frames",
+    "apps.notifications",
 
     "drf_spectacular",
     "drf_spectacular_sidecar",

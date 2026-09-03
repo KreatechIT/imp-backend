@@ -18,10 +18,11 @@
 
 ## 3. Changelog
 
-**Current version: 1.5** — 2026-09-03
+**Current version: 1.6** — 2026-09-03
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.6 | 2026-09-03 | **Added**: Notifications API, `/notifications/` (§35) — an in-app feed for both roles (job posted, task assigned, task submitted, task approved/rejected), with unread count and mark-read/mark-all-read actions. **Changed**: `GET /front-view/influencer/leaderboard/` and `GET /front-view/influencer/rank/{phone_number}/` (§20a, §20b) permission relaxed from `IsAdmin` to `IsAuthenticated` so members can see the leaderboard too. |
 | 1.5 | 2026-09-03 | **Added**: `GET /front-view/influencer/leaderboard/` and `GET /front-view/influencer/rank/{phone_number}/` (§20a, §20b) — server-side proxies to a third-party influencer-marketing platform (`staging-api.kinggroup44.com`), gated with our own `IsAdmin` instead of exposing the upstream's access_code to clients. |
 | 1.4 | 2026-09-03 | **Added**: flat cross-job/cross-org pending applications, `GET /jobs/applications/pending/` and `GET /jobs/applications/pending/{uuid}/` (§16a) — every `status=1` APPLIED member-job across every job/org, paginated, each row carrying its own `job_uuid` and `org_uuid`; alongside the existing job-scoped `/jobs/org/{org_uuid}/job/{job_uuid}/member/` (§16) which is unchanged. Added `org_uuid` field to the `MemberJob` object (§16) — was previously only `org` (name). |
 | 1.3 | 2026-09-03 | **Added**: flat cross-org job list, `GET /jobs/list/` and `GET /jobs/list/{uuid}/` (§12a) — lists jobs across every org without requiring the org uuid in the path, alongside the existing org-scoped `/jobs/org/{org_uuid}/job/` (§12) which is unchanged. Also enabled `CORS_ALLOW_ALL_ORIGINS` (env-driven) on staging. |
@@ -791,7 +792,7 @@ All aggregate math (base pay, deduction, total, per-member and summed) was verif
 
 ## 20a. Influencer leaderboard (third-party proxy) — `/front-view/influencer/leaderboard/`
 
-`IsAdmin`. Server-side proxy to an external influencer-marketing platform's leaderboard API (`staging-api.kinggroup44.com`). The upstream endpoint is gated only by an `access_code` in its URL; this proxy keeps that code server-side (`INFLUENCER_API_BASE_URL` / `INFLUENCER_API_ACCESS_CODE` env vars) and gates our own callers with `IsAdmin` instead.
+`IsAuthenticated`. Server-side proxy to an external influencer-marketing platform's leaderboard API (`staging-api.kinggroup44.com`). The upstream endpoint is gated only by an `access_code` in its URL; this proxy keeps that code server-side (`INFLUENCER_API_BASE_URL` / `INFLUENCER_API_ACCESS_CODE` env vars). Open to both roles so members can see the leaderboard too.
 
 | Method | Path |
 |---|---|
@@ -819,7 +820,7 @@ No params. Returns the upstream response verbatim — top members ranked by tota
 
 ## 20b. Influencer rank (third-party proxy) — `/front-view/influencer/rank/{phone_number}/`
 
-`IsAdmin`. Same upstream platform as §20a, filtered to one member by phone number.
+`IsAuthenticated`. Same upstream platform as §20a, filtered to one member by phone number.
 
 | Method | Path |
 |---|---|
@@ -1168,6 +1169,52 @@ Every one of these returns the task object — see §15.
 | GET | `/members/{member_uuid}/payouts/{uuid}/` |
 
 Object as in §18.
+
+## 35. Notifications — `/notifications/`
+
+`IsAuthenticated`. The caller's own feed — admin or member, whichever role is logged in. Scoped to `request.user`, so there is no uuid in the path to spoof (unlike the member routes in §0 #1). Read-only except for the two mark-read actions.
+
+| Method | Path |
+|---|---|
+| GET | `/notifications/` |
+| GET | `/notifications/{uuid}/` |
+| GET | `/notifications/unread_count/` |
+| PATCH | `/notifications/{uuid}/read/` |
+| PATCH | `/notifications/read-all/` |
+
+**Query (list)**: `unread` (`1`/`true` to filter to unread only), `page`, `page_size`.
+
+```json
+{
+  "uuid": "uuid",
+  "notification_type": 1,
+  "title": "string",
+  "message": "string",
+  "is_read": false,
+  "read_at": null,
+  "created": "datetime"
+}
+```
+
+`notification_type` — `1` JOB_POSTED, `2` TASK_ASSIGNED, `3` TASK_SUBMITTED, `4` TASK_APPROVED, `5` TASK_REJECTED.
+
+**GET unread_count/** — `{"count": 0}`.
+
+**PATCH {uuid}/read/** — no body. Marks one notification read (idempotent); returns the notification object. **400** if the uuid doesn't exist or doesn't belong to the caller.
+
+**PATCH read-all/** — no body. Marks every unread notification for the caller read; returns `{"count": 0}`.
+
+Triggers, verified by live testing:
+
+| Type | Fires when | Recipient(s) |
+|---|---|---|
+| JOB_POSTED | A job is created with `status=2`, or an existing job's `status` is changed to `2` (§12 create/update) | Every active member |
+| TASK_ASSIGNED | A member's daily/period task is generated on first read of `tasks/today/` (§31) | That member |
+| TASK_SUBMITTED | A member submits a task (§31 `submit`) | Every active admin |
+| TASK_APPROVED | An admin approves a submission (§15 `approve`) | That task's member |
+| TASK_REJECTED | An admin rejects a submission (§15 `reject`) | That task's member |
+
+Delivery is best-effort and fire-and-forget: a notification failing to write never fails the triggering request.
 
 ---
 

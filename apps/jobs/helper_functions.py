@@ -6,6 +6,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.jobs import models
+from apps.notifications import helper_functions as notifications
 
 
 def _month_end(day):
@@ -76,7 +77,29 @@ def ensure_today_tasks(member_uuid):
             )
 
     # the unique constraint absorbs the rows that are already there
+    existing_keys = set(
+        models.MemberTask.objects
+        .filter(member_job__member__uuid=member_uuid, period_key__in=period_keys)
+        .values_list("member_job_id", "requirement_id", "period_key")
+    )
+    new_tasks = [
+        task for task in pending
+        if (task.member_job_id, task.requirement_id, task.period_key) not in existing_keys
+    ]
+
     models.MemberTask.objects.bulk_create(pending, ignore_conflicts=True)
+
+    if new_tasks:
+        from apps.members.models import Member
+        member_user = Member.objects.select_related("user").get(uuid=member_uuid).user
+        for task in new_tasks:
+            notifications.notify(
+                recipient=member_user,
+                role=2,
+                notification_type=2,
+                title="New task assigned",
+                message=str(task.requirement),
+            )
 
     today = timezone.localdate()
     return (

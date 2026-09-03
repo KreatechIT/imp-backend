@@ -22,6 +22,7 @@ urlpatterns = [
     path("frame/", include(("apps.frames.library_urls", "frame-library"), namespace="frame-library")),
     path("front-view/", include(("apps.front_view.urls", "front-view"), namespace="front-view")),
     path("earnings/", include(("apps.earnings.urls", "earnings"), namespace="earnings")),
+    path("notifications/", include(("apps.notifications.urls", "notifications"), namespace="notifications")),
 
     # swagger urls
     path("schema/", SpectacularAPIView.as_view(), name="schema"),

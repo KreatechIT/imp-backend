@@ -7,6 +7,7 @@ from rest_framework.serializers import ValidationError
 from rest_framework.viewsets import ReadOnlyModelViewSet
 
 from apps.jobs import models, serializers_create, serializers_get
+from apps.notifications import helper_functions as notifications
 from base import responses
 from core import permissions
 from core.pagination import StandardPagination
@@ -175,6 +176,9 @@ class JobViewSet(OrgScopedMixin, ReadOnlyModelViewSet):
         for requirement in requirements:
             models.JobRequirement.objects.create(job=job, **requirement)
 
+        if job.status == 2:
+            notifications.notify_job_posted(job)
+
         data = self.serializer_class(job, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
 
@@ -205,7 +209,11 @@ class JobViewSet(OrgScopedMixin, ReadOnlyModelViewSet):
                 "end_date": "End date cannot be before start date."
             }).get_response()
 
+        was_live = job.status == 2
         job.update(**validated_data)
+
+        if job.status == 2 and not was_live:
+            notifications.notify_job_posted(job)
 
         data = self.serializer_class(job, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
@@ -640,6 +648,14 @@ class SubmissionViewSet(ReadOnlyModelViewSet):
 
         task.review(admin=request.user.admin, is_approved=True)
 
+        notifications.notify(
+            recipient=task.member_job.member.user,
+            role=2,
+            notification_type=4,
+            title="Task approved",
+            message=str(task.requirement),
+        )
+
         data = self.serializer_class(task, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
@@ -672,6 +688,14 @@ class SubmissionViewSet(ReadOnlyModelViewSet):
             admin=request.user.admin,
             is_approved=False,
             reject_reason=serializer.validated_data["reject_reason"],
+        )
+
+        notifications.notify(
+            recipient=task.member_job.member.user,
+            role=2,
+            notification_type=5,
+            title="Task rejected",
+            message=task.reject_reason or str(task.requirement),
         )
 
         data = self.serializer_class(task, context={"request": self.request}).data

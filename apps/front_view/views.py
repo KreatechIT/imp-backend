@@ -29,10 +29,10 @@ class InfluencerLeaderboardView(APIView):
 
     The upstream endpoint is gated only by an access_code in the URL; this
     view keeps that code server-side and gates our own callers with
-    IsAdmin instead.
+    IsAuthenticated so members can see the leaderboard too.
     """
 
-    permission_classes = [permissions.IsAdmin]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
         url = (
@@ -53,7 +53,7 @@ class InfluencerLeaderboardView(APIView):
 class InfluencerRankView(APIView):
     """Proxies the third-party influencer rank lookup for one member."""
 
-    permission_classes = [permissions.IsAdmin]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, phone_number=None, *args, **kwargs):
         url = (
