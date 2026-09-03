@@ -18,10 +18,11 @@
 
 ## 3. Changelog
 
-**Current version: 1.2** — 2026-09-03
+**Current version: 1.3** — 2026-09-03
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.3 | 2026-09-03 | **Added**: flat cross-org job list, `GET /jobs/list/` and `GET /jobs/list/{uuid}/` (§12a) — lists jobs across every org without requiring the org uuid in the path, alongside the existing org-scoped `/jobs/org/{org_uuid}/job/` (§12) which is unchanged. Also enabled `CORS_ALLOW_ALL_ORIGINS` (env-driven) on staging. |
 | 1.2 | 2026-09-03 | Full rewrite against the current codebase — previous doc described a stale route layout (`/jobs/companies/`, `/jobs/postings/`, `/front-view/content/`) that no longer exists. **Org/Job routes renamed**: `/jobs/companies/` → `/jobs/org/`, `/jobs/postings/` → `/jobs/org/{org_uuid}/job/`, requirements/frames nested under it accordingly. **Added**: Frame Library API (`/frame/library/`, `/frame/job/{job_uuid}/`) — create/edit/archive a frame from anywhere, not just from inside its job. **Removed**: `/front-view/content/` (member-facing content aggregator) no longer exists in code; members read banners/guides/terms straight off the same admin routes (all of which only require `IsAuthenticated`, not `IsAdmin`) plus the dedicated `public`/`public/{category}` actions. Documented permission class (`IsAdmin` / `IsMember` / `IsAuthenticated`) per section — this was missing before and matters because several "admin" routes are actually only `IsAuthenticated`, see §0 Known issues. Fixed a bug where creating a frame at `/jobs/org/{org}/job/{job}/frames/` always 500'd. |
 | 1.1 | 2026-09-02 | Added CMS dashboard KPI. Submissions: added `pending/` / `approved/` / `rejected/` shortcuts and `from_date` / `to_date` / `search` filters. Removed `GET /members/profile/audit-log/` (login history is no longer exposed via API). (Internally the `admins` Django app was renamed to `crmadmin` — no API path changed.) 85 endpoints. |
 | 1.0 | 2026-08-31 | Initial release. Covers auth, admin users, activity log, members, companies, jobs, job requirements, frames, submissions, member job applications, job settings, payouts, earnings statistics, KPI, banners, guides, terms, member profile, bank details, platform accounts, job board, tasks, earnings, missed and app content. 82 endpoints. |
@@ -429,6 +430,19 @@ All fields optional on PUT / PATCH.
 ```
 
 `is_live` = status `2` **and** not archived **and** now is between `start_date` and `end_date`. Verified by live testing against a real job.
+
+## 12a. Job list, all orgs — `/jobs/list/`
+
+`IsAdmin`. Read-only. Same `Job` object and fields as §12, but flat — lists jobs across every org instead of requiring the org uuid in the path. Use this when you just need a job's `uuid` (and its `org_uuid`) without resolving the org first; use §12 when you're already scoped to one org.
+
+| Method | Path |
+|---|---|
+| GET | `/jobs/list/` |
+| GET | `/jobs/list/{uuid}/` |
+
+**Query**: `org_uuid` (uuid, filter to one org), `status` (int, job status), `title` (icontains), `page`, `page_size`.
+
+Response object identical to §12.
 
 ## 13. Job requirements — `/jobs/org/{org_uuid}/job/{job_uuid}/requirement/`
 
