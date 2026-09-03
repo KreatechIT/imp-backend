@@ -62,9 +62,3 @@ TASK_FILE_MEDIA_TYPE_CHOICES = (
     (1, _("VIDEO")),
     (2, _("PHOTO")),
 )
-
-RENDER_STATUS_CHOICES = (
-    (1, _("PROCESSING")),
-    (2, _("DONE")),
-    (3, _("FAILED")),
-)

@@ -49,6 +49,9 @@ class JobSerializer(serializers.Serializer):
     description = serializers.CharField(
         required=False, allow_null=True, allow_blank=True,
     )
+    script = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, max_length=5000,
+    )
     recurrence = serializers.ChoiceField(
         choices=choices.JOB_RECURRENCE_CHOICES, default=1,
     )
@@ -81,6 +84,9 @@ class EditJobSerializer(serializers.Serializer):
     title = serializers.CharField(required=False)
     description = serializers.CharField(
         required=False, allow_null=True, allow_blank=True,
+    )
+    script = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, max_length=5000,
     )
     recurrence = serializers.ChoiceField(
         choices=choices.JOB_RECURRENCE_CHOICES, required=False,

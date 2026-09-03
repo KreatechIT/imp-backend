@@ -28,6 +28,13 @@ class FrameSerializer(serializers.Serializer):
     )
 
 
+class RenderRequestSerializer(serializers.Serializer):
+    file = serializers.FileField(
+        required=True,
+        validators=[encryption.validate_content_file_size],
+    )
+
+
 class EditFrameSerializer(FrameSerializer):
     name = serializers.CharField(required=False)
     job_uuid = serializers.UUIDField(required=False)

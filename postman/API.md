@@ -18,10 +18,12 @@
 
 ## 3. Changelog
 
-**Current version: 1.7** — 2026-09-03
+**Current version: 1.9** — 2026-09-04
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.9 | 2026-09-04 | **Reverted** 1.8's coupling of frame compositing into task content submission — design mockups (Frame Editor, Posting Rules) confirm framing is a standalone tool, not part of submitting content: `POST /members/{member_uuid}/tasks/{uuid}/content/` (§31) is back to a plain multi-file upload, no `frame_uuid`, no compositing. **Added**: standalone Frame Editor render endpoint, `POST /frame/{frame_uuid}/render/` (§14c) — takes a raw photo/video, queues server-side compositing (Celery + FFmpeg) against that frame, no job/task/org needed in the path since a frame already belongs to one job. New model `RenderedContent` replaces the `TaskFile` fields added in 1.8. **Added**: `script` field on Job (§12/§13) — free text, admin-authored, shown to the member alongside a job's frames as campaign instructions. **Added**: explicit PNG/GIF-only validation on frame upload (§14/§14a) — a video or other image format is now rejected with a clear message rather than an incidental Pillow error. `GET/DELETE /frame/content/` (§35a) unchanged in shape, now backed by `RenderedContent`. |
+| 1.8 | 2026-09-04 | **Changed**: `POST /members/{member_uuid}/tasks/{uuid}/content/` (§31) now takes `frame_uuid` as a required path segment — `.../content/{frame_uuid}/` — instead of a bare file upload with no frame. Uploading now saves the raw file immediately and queues server-side compositing (Celery + FFmpeg) in the background instead of relying on client-side canvas compositing, which could not handle video at all and was unreliably slow for an animated-GIF frame over a photo (client feedback: frame import/export was broken for video). Each upload now produces two `TaskFile` rows (`is_original` flag distinguishes original vs. framed; `frame_uuid` and `render_status` added to the file object, see §31/§15). **Added**: `RENDER_READY` notification type (§35), fired when a queued composite finishes. **Added**: admin original-content library, `GET/DELETE /frame/content/` (§35a) — every raw upload across every job with member/job/task/frame context; delete is a real hard delete of both the original and its framed output, files included. |
 | 1.7 | 2026-09-03 | **Fixed**: `/media/...` responses (frame images, banners, profile pictures, uploaded proof/content files — anything under `MEDIA_URL`) were served with no `Access-Control-Allow-Origin` header at all, because nginx serves `/media/` directly off disk via an `alias`, bypassing Django and `django-cors-headers` entirely. This tainted any `<canvas>` a frontend drew a media image onto (e.g. compositing a frame over a photo for export), blocking `canvas.toDataURL()` / `toBlob()` with a `SecurityError` even though `img.crossOrigin = 'anonymous'` was set correctly client-side. Added `Access-Control-Allow-Origin: * always;` to the `/media/` nginx location block on production. Not a code change in this repo — infra-only fix, see §4 Conventions. |
 | 1.6 | 2026-09-03 | **Added**: Notifications API, `/notifications/` (§35) — an in-app feed for both roles (job posted, task assigned, task submitted, task approved/rejected), with unread count and mark-read/mark-all-read actions. **Changed**: `GET /front-view/influencer/leaderboard/` and `GET /front-view/influencer/rank/{phone_number}/` (§20a, §20b) permission relaxed from `IsAdmin` to `IsAuthenticated` so members can see the leaderboard too. |
 | 1.5 | 2026-09-03 | **Added**: `GET /front-view/influencer/leaderboard/` and `GET /front-view/influencer/rank/{phone_number}/` (§20a, §20b) — server-side proxies to a third-party influencer-marketing platform (`staging-api.kinggroup44.com`), gated with our own `IsAdmin` instead of exposing the upstream's access_code to clients. |
@@ -406,6 +408,7 @@ All fields optional on PUT / PATCH.
 |---|---|---|---|
 | `title` | string | yes | |
 | `description` | string | no | |
+| `script` | string | no | max 5000 chars — campaign instructions/talking points shown to the member alongside the job's frames |
 | `recurrence` | int | no | job recurrence, default `1` |
 | `payment_amount` | decimal(12,2) | yes | ≥ 0 |
 | `payment_period` | int | no | payment period, default `3` |
@@ -423,7 +426,7 @@ All fields optional on PUT / PATCH.
 {
   "uuid": "uuid",
   "org": "string", "org_uuid": "uuid", "org_logo": "url|null",
-  "title": "string", "description": "string|null",
+  "title": "string", "description": "string|null", "script": "string|null",
   "recurrence": 1, "payment_amount": "0.00", "payment_period": 3,
   "deduction_per_miss": "0.00|null",
   "start_date": "datetime", "end_date": "datetime|null",
@@ -494,7 +497,7 @@ Response object identical to §12.
 |---|---|---|---|
 | `name` | string | yes | |
 | `job_uuid` | uuid | yes on POST | must match the `{job_uuid}` already in the URL — the job comes from the path, this field is accepted but not otherwise used to look anything up on this route (it exists because the same request serializer is shared with the Frame Library API, §14a) |
-| `image` | file | yes | PNG with an alpha channel; size-validated |
+| `image` | file | yes | PNG or GIF with an alpha channel; any other format (including video) is rejected — size-validated |
 | `aspect_ratio` | int | no | frame aspect ratio, default `1` |
 | `media_type` | int | no | frame media type, default `1` |
 | `ordering` | int | no | ≥ 0, default `0` |
@@ -537,7 +540,7 @@ Same `Frame` model and object shape as §14, but not nested under a job path —
 |---|---|---|---|
 | `name` | string | yes | |
 | `job_uuid` | uuid | yes | must be an unarchived job; **404** `Job Id` if not found |
-| `image` | file | yes | PNG with an alpha channel; size-validated |
+| `image` | file | yes | PNG or GIF with an alpha channel; any other format (including video) is rejected — size-validated |
 | `aspect_ratio` | int | no | frame aspect ratio, default `1` |
 | `media_type` | int | no | frame media type, default `1` |
 | `ordering` | int | no | ≥ 0, default `0` |
@@ -565,6 +568,43 @@ Same `Frame` model and object shape as §14, but not nested under a job path —
 | GET | `/frame/job/{job_uuid}/{uuid}/` |
 
 **Query**: `media_type` (int), `status` (int), `page`, `page_size`. Object as in §14.
+
+## 14c. Frame Editor render — `/frame/{frame_uuid}/render/`
+
+`IsAuthenticated` (member-facing). Standalone: import a raw photo/video, apply one frame, get back the composited result. Not tied to a task or a job submission — matches the app's Frame Editor flow (Select Job → Import Video → Select Frame → Export Video), which happens before the member ever posts or submits anything. Addressed by `frame_uuid` alone; a frame already belongs to exactly one job (§14), so no org/job/task uuid is needed in the path.
+
+| Method | Path |
+|---|---|
+| POST | `/frame/{frame_uuid}/render/` |
+| GET | `/frame/{frame_uuid}/render/` |
+| GET | `/frame/{frame_uuid}/render/{uuid}/` |
+
+**POST** *(multipart)* — the raw content to composite.
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `file` | file | yes | photo or video; max 200MB |
+
+**404** `Frame Id` if the frame doesn't exist or is archived. **201** immediately with the new render row, `render_status: 1` PROCESSING — compositing runs on a background worker (Celery/FFmpeg), not inline. Poll `GET .../render/{uuid}/`, or wait for the `RENDER_READY` notification (§35), then re-fetch; `render_status` becomes `2` DONE (with `rendered_file` populated) or `3` FAILED.
+
+**GET** (list/detail) — the caller's own past renders on this frame, newest first, paginated.
+
+```json
+{
+  "uuid": "uuid",
+  "member": "full name", "member_uuid": "uuid",
+  "job_uuid": "uuid", "job_title": "string",
+  "frame_uuid": "uuid", "frame_name": "string",
+  "original_file": "url", "rendered_file": "url|null",
+  "media_type": 2, "original_name": "string|null",
+  "render_status": 1,
+  "created": "datetime"
+}
+```
+
+Frame × content behavior, verified by live testing (twice, independently): a static (PNG) frame stays fixed for the whole output; an animated (GIF) frame overlaid on a photo plays through exactly one loop and the output is itself an animated GIF; an animated **or** static frame overlaid on a video is composited for the video's full duration — an animated frame loops repeatedly to cover it, proven against a video longer than one GIF cycle. The frame's transparent area is where the content shows through; opaque parts of the frame cover it. Output format: photo + static frame → `.jpg`; photo + animated frame → `.gif`; any video content → `.mp4`.
+
+The member then downloads `rendered_file` and, if it's for a job submission, uploads it separately through the ordinary task content endpoint (§31 `content/`) like any other file — this endpoint does not touch tasks or submissions itself.
 
 ## 15. Submissions — `/jobs/job/{job_uuid}/submission/`
 
@@ -1104,6 +1144,8 @@ Object as in §14.
 |---|---|---|---|
 | `files` | file[] | yes | 1–20 files; `media_type` is derived from the extension |
 
+Plain upload — no frame involved here. If content needs a frame overlay, apply it first through the standalone Frame Editor (§14c) and upload the exported result here like any other file.
+
 **PATCH content/{file_uuid}/** — no body. Archives one uploaded file.
 
 **result** — post performance. Display only; does not affect earnings.
@@ -1199,7 +1241,7 @@ Object as in §18.
 }
 ```
 
-`notification_type` — `1` JOB_POSTED, `2` TASK_ASSIGNED, `3` TASK_SUBMITTED, `4` TASK_APPROVED, `5` TASK_REJECTED.
+`notification_type` — `1` JOB_POSTED, `2` TASK_ASSIGNED, `3` TASK_SUBMITTED, `4` TASK_APPROVED, `5` TASK_REJECTED, `6` RENDER_READY.
 
 **GET unread_count/** — `{"count": 0}`.
 
@@ -1216,8 +1258,36 @@ Triggers, verified by live testing:
 | TASK_SUBMITTED | A member submits a task (§31 `submit`) | Every active admin |
 | TASK_APPROVED | An admin approves a submission (§15 `approve`) | That task's member |
 | TASK_REJECTED | An admin rejects a submission (§15 `reject`) | That task's member |
+| RENDER_READY | A queued Frame Editor render (§14c) finishes compositing | That member |
 
 Delivery is best-effort and fire-and-forget: a notification failing to write never fails the triggering request.
+
+## 35a. Rendered content library (admin) — `/frame/content/`
+
+`IsAdmin`. Every render a member has produced through the Frame Editor (§14c), across every job — the CMS-facing library of originals and their framed output. One row per render (both the original upload and the composited result are on the same row, not two separate rows).
+
+| Method | Path |
+|---|---|
+| GET | `/frame/content/` |
+| GET | `/frame/content/{uuid}/` |
+| DELETE | `/frame/content/{uuid}/` |
+
+**Query (list)**: `member_uuid`, `job_uuid`, `from_date`, `to_date`, `page`, `page_size`.
+
+```json
+{
+  "uuid": "uuid",
+  "member": "full name", "member_uuid": "uuid",
+  "job_uuid": "uuid", "job_title": "string",
+  "frame_uuid": "uuid", "frame_name": "string",
+  "original_file": "url", "rendered_file": "url|null",
+  "media_type": 2, "original_name": "string|null",
+  "render_status": 2,
+  "created": "datetime"
+}
+```
+
+**DELETE {uuid}/** — no body. Hard delete: removes the original **and** its rendered output — both files on disk and the database row, permanently. Not the soft-delete/archive pattern used elsewhere in this API. Verified by live testing: files confirmed gone from disk after delete, not just hidden.
 
 ---
 

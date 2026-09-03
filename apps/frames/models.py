@@ -7,6 +7,7 @@ from django.utils.translation import gettext_lazy as _
 from sorl.thumbnail import ImageField
 
 from apps.frames import choices
+from apps.jobs.choices import TASK_FILE_MEDIA_TYPE_CHOICES
 from apps.jobs.models import Job
 from base.models import TimeStampedModel
 from core import encryption
@@ -15,6 +16,11 @@ from core import encryption
 def frame_upload_to(instance, filename):
     ext = os.path.splitext(filename)[1].lower()
     return f"frame/{uuid4().hex}{ext}"
+
+
+def rendered_content_upload_to(instance, filename):
+    ext = os.path.splitext(filename)[1].lower()
+    return f"content/{uuid4().hex}{ext}"
 
 
 class Frame(TimeStampedModel):
@@ -88,3 +94,60 @@ class Frame(TimeStampedModel):
     def accepts(self, media_type):
         """BOTH frames fit either import; the rest must match exactly."""
         return self.media_type == 1 or self.media_type == media_type
+
+
+class RenderedContent(TimeStampedModel):
+    """One member-uploaded photo/video composited with a frame.
+
+    Standalone: the Frame Editor is not tied to a task or a submission,
+    only to a job (through its frame). The original upload is kept for
+    the admin content library; the rendered file is produced by a
+    background worker (FFmpeg), see apps.jobs.tasks.
+    """
+
+    frame = models.ForeignKey(
+        Frame,
+        verbose_name=_("Frame"),
+        on_delete=models.CASCADE,
+        related_name="renders",
+    )
+    member = models.ForeignKey(
+        "members.Member",
+        verbose_name=_("Member"),
+        on_delete=models.CASCADE,
+        related_name="rendered_content",
+    )
+    original_file = models.FileField(
+        upload_to=rendered_content_upload_to,
+        validators=[encryption.validate_content_file_size],
+    )
+    media_type = models.IntegerField(
+        verbose_name=_("Media Type"),
+        choices=TASK_FILE_MEDIA_TYPE_CHOICES,
+    )
+    original_name = models.CharField(
+        verbose_name=_("Original Name"),
+        max_length=255,
+        blank=True,
+        null=True,
+    )
+    rendered_file = models.FileField(
+        upload_to=rendered_content_upload_to,
+        blank=True,
+        null=True,
+    )
+    render_status = models.IntegerField(
+        verbose_name=_("Render Status"),
+        choices=choices.RENDER_STATUS_CHOICES,
+        default=1,
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["created"]),
+            models.Index(fields=["frame"]),
+            models.Index(fields=["member"]),
+        ]
+
+    def __str__(self):
+        return f"{self.member} - {self.frame}"

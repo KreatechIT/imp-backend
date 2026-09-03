@@ -1,6 +1,7 @@
 import os
 from uuid import uuid4
 
+from django.core.validators import MaxLengthValidator
 from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -118,6 +119,12 @@ class Job(TimeStampedModel):
         verbose_name=_("Description"),
         blank=True,
         null=True,
+    )
+    script = models.TextField(
+        verbose_name=_("Script"),
+        blank=True,
+        null=True,
+        validators=[MaxLengthValidator(5000)],
     )
     recurrence = models.IntegerField(
         verbose_name=_("Recurrence"),
@@ -442,28 +449,12 @@ class TaskFile(TimeStampedModel):
         null=True,
     )
     size = models.PositiveBigIntegerField(default=0)
-    frame = models.ForeignKey(
-        "frames.Frame",
-        verbose_name=_("Frame"),
-        on_delete=models.SET_NULL,
-        related_name="rendered_files",
-        blank=True,
-        null=True,
-    )
-    is_original = models.BooleanField(default=False)
-    render_status = models.IntegerField(
-        verbose_name=_("Render Status"),
-        choices=choices.RENDER_STATUS_CHOICES,
-        blank=True,
-        null=True,
-    )
     archived = models.DateTimeField(blank=True, null=True)
 
     class Meta:
         indexes = [
             models.Index(fields=["created"]),
             models.Index(fields=["media_type"]),
-            models.Index(fields=["frame"]),
         ]
 
     def __str__(self):

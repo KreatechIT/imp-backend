@@ -52,12 +52,15 @@ def validate_transparent_image(value):
     try:
         value.seek(0)
         image = Image.open(value)
-        mode, info = image.mode, image.info
+        mode, info, image_format = image.mode, image.info, image.format
     except (UnidentifiedImageError, OSError):
         value.seek(0)
         raise ValidationError("The frame must be a valid image file.")
 
     value.seek(0)
+
+    if image_format not in ("PNG", "GIF"):
+        raise ValidationError("The frame must be a PNG or GIF image.")
 
     has_alpha = mode in ("RGBA", "LA") or (
         mode == "P" and "transparency" in info

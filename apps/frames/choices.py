@@ -18,3 +18,9 @@ FRAME_STATUS_CHOICES = (
     (1, _("ACTIVE")),
     (2, _("INACTIVE")),
 )
+
+RENDER_STATUS_CHOICES = (
+    (1, _("PROCESSING")),
+    (2, _("DONE")),
+    (3, _("FAILED")),
+)

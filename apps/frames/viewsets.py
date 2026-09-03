@@ -4,7 +4,7 @@ from rest_framework.serializers import ValidationError
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 from apps.frames import models, serializers_create, serializers_get
-from apps.jobs.models import Job, TaskFile
+from apps.jobs.models import Job
 from base import responses
 from core import permissions
 from core.pagination import StandardPagination
@@ -272,10 +272,10 @@ class MemberFrameViewSet(ReadOnlyModelViewSet):
         return queryset.order_by("ordering", "created")
 
 
-class OriginalContentViewSet(ReadOnlyModelViewSet):
-    """Admin library of raw content members uploaded to be framed."""
+class RenderedContentViewSet(ReadOnlyModelViewSet):
+    """Admin library of raw content members uploaded to the Frame Editor."""
 
-    serializer_class = serializers_get.OriginalContentSerializer
+    serializer_class = serializers_get.RenderedContentSerializer
     permission_classes = [permissions.IsAdmin]
     pagination_class = StandardPagination
     lookup_field = "uuid"
@@ -283,13 +283,8 @@ class OriginalContentViewSet(ReadOnlyModelViewSet):
 
     def get_queryset(self):
         queryset = (
-            TaskFile.objects
-            .filter(is_original=True, archived=None)
-            .select_related(
-                "task__member_job__member__user",
-                "task__member_job__job",
-                "frame",
-            )
+            models.RenderedContent.objects
+            .select_related("member__user", "frame__job")
             .order_by("-created")
         )
 
@@ -299,9 +294,9 @@ class OriginalContentViewSet(ReadOnlyModelViewSet):
         to_date = self.request.query_params.get("to_date")
 
         if member_uuid:
-            queryset = queryset.filter(task__member_job__member__uuid=member_uuid)
+            queryset = queryset.filter(member__uuid=member_uuid)
         if job_uuid:
-            queryset = queryset.filter(task__member_job__job__uuid=job_uuid)
+            queryset = queryset.filter(frame__job__uuid=job_uuid)
         if from_date:
             queryset = queryset.filter(created__date__gte=from_date)
         if to_date:
@@ -309,19 +304,78 @@ class OriginalContentViewSet(ReadOnlyModelViewSet):
         return queryset
 
     def destroy(self, request, uuid=None, *args, **kwargs):
-        task_file = self.get_queryset().filter(uuid=uuid).first()
-        if task_file is None:
+        rendered = self.get_queryset().filter(uuid=uuid).first()
+        if rendered is None:
             return responses.MissingItemError(
                 item_key=self.item_key, item_id=uuid,
             ).get_response()
 
-        for rendered in TaskFile.objects.filter(
-            task=task_file.task, frame=task_file.frame, is_original=False,
-        ):
-            rendered.file.delete(save=False)
-            rendered.delete()
-
-        task_file.file.delete(save=False)
-        task_file.delete()
+        rendered.original_file.delete(save=False)
+        if rendered.rendered_file:
+            rendered.rendered_file.delete(save=False)
+        rendered.delete()
 
         return responses.SuccessResponse(data={}).get_response()
+
+
+class FrameRenderViewSet(ReadOnlyModelViewSet):
+    """The Frame Editor: import content, apply a frame, export the result.
+
+    Addressed by frame uuid alone - a frame already knows which job it
+    belongs to, so no job/org/task uuid is needed in the path.
+    """
+
+    serializer_class = serializers_get.RenderedContentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardPagination
+    lookup_field = "uuid"
+    item_key = "Render Id"
+
+    def get_queryset(self):
+        return (
+            models.RenderedContent.objects
+            .filter(
+                frame__uuid=self.kwargs.get("frame_uuid"),
+                member__user=self.request.user,
+            )
+            .select_related("member__user", "frame__job")
+            .order_by("-created")
+        )
+
+    @extend_schema(request=serializers_create.RenderRequestSerializer)
+    def create(self, request, frame_uuid=None, *args, **kwargs):
+        serializer = serializers_create.RenderRequestSerializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except ValidationError as e:
+            return responses.InvalidDataError(details=e.detail).get_response()
+
+        frame = models.Frame.objects.filter(uuid=frame_uuid, archived=None).first()
+        if frame is None:
+            return responses.MissingItemError(
+                item_key="Frame Id", item_id=frame_uuid,
+            ).get_response()
+
+        member = getattr(request.user, "member", None)
+        if member is None:
+            return responses.MissingItemError(
+                item_key="Member Id", item_id=str(request.user.id),
+            ).get_response()
+
+        upload = serializer.validated_data["file"]
+        from apps.jobs.helper_functions import media_type_for
+
+        rendered = models.RenderedContent.objects.create(
+            frame=frame,
+            member=member,
+            original_file=upload,
+            media_type=media_type_for(upload.name),
+            original_name=upload.name[:255],
+        )
+
+        from apps.frames.tasks import render_content
+
+        render_content.delay(rendered.id)
+
+        data = self.serializer_class(rendered, context={"request": self.request}).data
+        return responses.CreatedSuccessResponse(data=data).get_response()
