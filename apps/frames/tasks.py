@@ -45,8 +45,12 @@ def render_content(rendered_content_id):
         # The frame is the fixed canvas; content varies in size, so it is
         # stretched edge-to-edge onto the frame's exact resolution before
         # the overlay is drawn on top - otherwise a size mismatch leaves
-        # part of the canvas unframed or crops the content.
-        scale_to_frame = "[0:v][1:v]scale2ref=w=iw:h=ih[content][frame]"
+        # part of the canvas unframed or crops the content. Rounded to an
+        # even width/height since libx264 rejects odd dimensions and an
+        # uploaded frame image is not guaranteed to have them.
+        scale_to_frame = (
+            "[0:v][1:v]scale2ref=w=trunc(iw/2)*2:h=trunc(ih/2)*2[content][frame]"
+        )
 
         if is_video_content:
             cmd = [
@@ -92,7 +96,12 @@ def render_content(rendered_content_id):
                     out_path,
                 ]
 
-        result = subprocess.run(cmd, capture_output=True)
+        try:
+            result = subprocess.run(cmd, capture_output=True, timeout=300)
+        except subprocess.TimeoutExpired:
+            rendered.render_status = 3
+            rendered.save()
+            return
 
         if result.returncode != 0 or not os.path.exists(out_path):
             rendered.render_status = 3
