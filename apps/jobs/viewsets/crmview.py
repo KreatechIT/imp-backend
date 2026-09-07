@@ -471,6 +471,14 @@ class JobMemberViewSet(OrgScopedMixin, ReadOnlyModelViewSet):
 
         application.update(**updates)
 
+        notifications.notify(
+            recipient=application.member.user,
+            role=2,
+            notification_type=7,
+            title="Application approved",
+            message=str(application.job),
+        )
+
         data = self.serializer_class(application, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
 
@@ -488,6 +496,14 @@ class JobMemberViewSet(OrgScopedMixin, ReadOnlyModelViewSet):
             ).get_response()
 
         application.update(status=4)
+
+        notifications.notify(
+            recipient=application.member.user,
+            role=2,
+            notification_type=8,
+            title="Application rejected",
+            message=str(application.job),
+        )
 
         data = self.serializer_class(application, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
