@@ -23,6 +23,17 @@ def render_content(rendered_content_id):
     is_animated_frame = frame.image.name.lower().endswith(".gif")
     is_video_content = rendered.media_type == 1
 
+    has_crop = all(
+        v is not None
+        for v in (rendered.crop_x, rendered.crop_y, rendered.crop_width, rendered.crop_height)
+    )
+    has_trim = (
+        is_video_content
+        and rendered.trim_in is not None
+        and rendered.trim_out is not None
+        and rendered.trim_out > rendered.trim_in
+    )
+
     with tempfile.TemporaryDirectory() as tmp_dir:
         content_path = os.path.join(tmp_dir, os.path.basename(rendered.original_file.name))
         with open(content_path, "wb") as fh:
@@ -48,17 +59,30 @@ def render_content(rendered_content_id):
         # part of the canvas unframed or crops the content. Rounded to an
         # even width/height since libx264 rejects odd dimensions and an
         # uploaded frame image is not guaranteed to have them.
+        if has_crop:
+            content_filter = (
+                f"[0:v]crop={rendered.crop_width}:{rendered.crop_height}:"
+                f"{rendered.crop_x}:{rendered.crop_y}[content_in];"
+            )
+            content_source = "[content_in]"
+        else:
+            content_filter = ""
+            content_source = "[0:v]"
+
         scale_to_frame = (
-            "[0:v][1:v]scale2ref=w=trunc(iw/2)*2:h=trunc(ih/2)*2[content][frame]"
+            f"{content_filter}{content_source}[1:v]"
+            "scale2ref=w=trunc(iw/2)*2:h=trunc(ih/2)*2[content][frame]"
         )
 
         if is_video_content:
-            cmd = [
-                "ffmpeg", "-y",
-                "-i", content_path,
-            ]
+            cmd = ["ffmpeg", "-y"]
+            if has_trim:
+                cmd += ["-ss", str(rendered.trim_in), "-t", str(rendered.trim_out - rendered.trim_in)]
+            cmd += ["-i", content_path]
             if is_animated_frame:
                 cmd += ["-ignore_loop", "0"]
+            else:
+                cmd += ["-loop", "1"]
             cmd += [
                 "-i", frame_path,
                 "-filter_complex",

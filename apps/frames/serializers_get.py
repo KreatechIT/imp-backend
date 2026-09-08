@@ -26,6 +26,12 @@ class RenderedContentSerializer(serializers.ModelSerializer):
             "media_type",
             "original_name",
             "render_status",
+            "crop_x",
+            "crop_y",
+            "crop_width",
+            "crop_height",
+            "trim_in",
+            "trim_out",
             "created",
         ]
 

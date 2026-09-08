@@ -141,6 +141,12 @@ class RenderedContent(TimeStampedModel):
         choices=choices.RENDER_STATUS_CHOICES,
         default=1,
     )
+    crop_x = models.PositiveIntegerField(blank=True, null=True)
+    crop_y = models.PositiveIntegerField(blank=True, null=True)
+    crop_width = models.PositiveIntegerField(blank=True, null=True)
+    crop_height = models.PositiveIntegerField(blank=True, null=True)
+    trim_in = models.FloatField(blank=True, null=True)
+    trim_out = models.FloatField(blank=True, null=True)
 
     class Meta:
         indexes = [

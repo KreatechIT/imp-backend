@@ -371,6 +371,12 @@ class FrameRenderViewSet(ReadOnlyModelViewSet):
             original_file=upload,
             media_type=media_type_for(upload.name),
             original_name=upload.name[:255],
+            crop_x=serializer.validated_data.get("crop_x"),
+            crop_y=serializer.validated_data.get("crop_y"),
+            crop_width=serializer.validated_data.get("crop_width"),
+            crop_height=serializer.validated_data.get("crop_height"),
+            trim_in=serializer.validated_data.get("trim_in"),
+            trim_out=serializer.validated_data.get("trim_out"),
         )
 
         from apps.frames.tasks import render_content

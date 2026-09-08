@@ -33,6 +33,12 @@ class RenderRequestSerializer(serializers.Serializer):
         required=True,
         validators=[encryption.validate_content_file_size],
     )
+    crop_x = serializers.IntegerField(required=False, min_value=0)
+    crop_y = serializers.IntegerField(required=False, min_value=0)
+    crop_width = serializers.IntegerField(required=False, min_value=1)
+    crop_height = serializers.IntegerField(required=False, min_value=1)
+    trim_in = serializers.FloatField(required=False, min_value=0)
+    trim_out = serializers.FloatField(required=False, min_value=0)
 
 
 class EditFrameSerializer(FrameSerializer):
