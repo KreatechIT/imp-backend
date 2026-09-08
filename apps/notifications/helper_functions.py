@@ -1,3 +1,5 @@
+from django.utils import timezone
+
 from apps.notifications import models
 
 
@@ -32,6 +34,11 @@ def notify_admins(*, notification_type, title, message=None):
 def notify_job_posted(job):
     from apps.members.models import Member
 
+    message = job.title
+    if job.start_date > timezone.now():
+        opens_at = timezone.localtime(job.start_date)
+        message = f"{job.title} - opens {opens_at:%d %b %Y}"
+
     members = Member.objects.filter(archived=None).select_related("user")
     models.Notification.objects.bulk_create([
         models.Notification(
@@ -39,7 +46,7 @@ def notify_job_posted(job):
             role=2,
             notification_type=1,
             title="New job available",
-            message=job.title,
+            message=message,
         )
         for member in members
     ])

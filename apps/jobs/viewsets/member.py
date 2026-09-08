@@ -1,7 +1,7 @@
 from datetime import datetime, time, timedelta
 
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import BooleanField, Case, Q, Value, When
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
@@ -56,16 +56,21 @@ class AvailableJobViewSet(ReadOnlyModelViewSet):
     item_key = "Job Id"
 
     def get_queryset(self):
-        # the same window `apply` enforces, so the board never offers a job
-        # that would be refused on tap
         now = timezone.now()
         return (
             models.Job.objects
-            .filter(archived=None, status=2, start_date__lte=now)
+            .filter(archived=None, status=2)
             .filter(Q(end_date__isnull=True) | Q(end_date__gte=now))
+            .annotate(
+                is_open=Case(
+                    When(start_date__lte=now, then=Value(True)),
+                    default=Value(False),
+                    output_field=BooleanField(),
+                )
+            )
             .select_related("company")
             .prefetch_related("requirements")
-            .order_by("-created")
+            .order_by("-is_open", "-created")
         )
 
     def get_serializer_context(self):
@@ -94,9 +99,12 @@ class AvailableJobViewSet(ReadOnlyModelViewSet):
             ).get_response()
 
         if not job.is_live:
-            return responses.BadRequestError(
-                details="Job is not open for applications"
-            ).get_response()
+            if job.status == 2 and timezone.now() < job.start_date:
+                opens_at = timezone.localtime(job.start_date)
+                details = f"Job opens on {opens_at:%d %b %Y}"
+            else:
+                details = "Job is not open for applications"
+            return responses.BadRequestError(details=details).get_response()
 
         try:
             with transaction.atomic():
