@@ -6,6 +6,7 @@ from apps.frames import models
 class RenderedContentSerializer(serializers.ModelSerializer):
     member_uuid = serializers.UUIDField(source="member.uuid")
     member = serializers.CharField(source="member.full_name")
+    org = serializers.CharField(source="frame.job.company.name")
     job_uuid = serializers.UUIDField(source="frame.job.uuid")
     job_title = serializers.CharField(source="frame.job.title")
     frame_uuid = serializers.UUIDField(source="frame.uuid")
@@ -17,6 +18,7 @@ class RenderedContentSerializer(serializers.ModelSerializer):
             "uuid",
             "member",
             "member_uuid",
+            "org",
             "job_uuid",
             "job_title",
             "frame_uuid",

@@ -1,5 +1,6 @@
 import os
 from celery import Celery
+from celery.schedules import crontab
 
 django_environment = os.environ.get("DJANGO_ENV", None)
 
@@ -16,3 +17,10 @@ app = Celery("core")
 app.config_from_object("django.conf:settings", namespace="CELERY")
 
 app.autodiscover_tasks()
+
+app.conf.beat_schedule = {
+    "send-pending-result-reminders": {
+        "task": "apps.jobs.tasks.send_pending_result_reminders",
+        "schedule": crontab(hour=9, minute=0),
+    },
+}

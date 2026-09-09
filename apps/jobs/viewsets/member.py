@@ -328,5 +328,17 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
 
         task.submit_result(**serializer.validated_data)
 
+        still_pending = task.member_job.tasks.filter(
+            submitted_at__isnull=False, metrics_submitted_at__isnull=True,
+        ).exists()
+        if not still_pending:
+            notifications.notify(
+                recipient=task.member_job.member.user,
+                role=2,
+                notification_type=10,
+                title="Results completed",
+                message=str(task.member_job.job.title),
+            )
+
         data = self.serializer_class(task, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()

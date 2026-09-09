@@ -284,7 +284,7 @@ class RenderedContentViewSet(ReadOnlyModelViewSet):
     def get_queryset(self):
         queryset = (
             models.RenderedContent.objects
-            .select_related("member__user", "frame__job")
+            .select_related("member__user", "frame__job__company")
             .order_by("-created")
         )
 
@@ -338,7 +338,7 @@ class FrameRenderViewSet(ReadOnlyModelViewSet):
                 frame__uuid=self.kwargs.get("frame_uuid"),
                 member__user=self.request.user,
             )
-            .select_related("member__user", "frame__job")
+            .select_related("member__user", "frame__job__company")
             .order_by("-created")
         )
 
@@ -385,3 +385,19 @@ class FrameRenderViewSet(ReadOnlyModelViewSet):
 
         data = self.serializer_class(rendered, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
+
+    @action(detail=True, methods=["post"])
+    def downloaded(self, request, uuid=None, frame_uuid=None, *args, **kwargs):
+        rendered = self.get_queryset().filter(uuid=uuid).first()
+        if rendered is None:
+            return responses.MissingItemError(
+                item_key=self.item_key, item_id=uuid,
+            ).get_response()
+
+        if rendered.rendered_file:
+            rendered.rendered_file.delete(save=False)
+            rendered.rendered_file = None
+            rendered.save()
+
+        data = self.serializer_class(rendered, context={"request": self.request}).data
+        return responses.SuccessResponse(data=data).get_response()
