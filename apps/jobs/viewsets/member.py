@@ -1,7 +1,7 @@
 from datetime import datetime, time, timedelta
 
 from django.db import IntegrityError, transaction
-from django.db.models import BooleanField, Case, Q, Value, When
+from django.db.models import BooleanField, Case, Count, Q, Value, When
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
@@ -22,13 +22,6 @@ from core.pagination import StandardPagination
 
 
 class MemberJobViewSet(ReadOnlyModelViewSet):
-    """The member's own jobs, read only.
-
-    Approving, rejecting and completing an application are admin work and
-    live under the job itself, at
-    /jobs/org/{org_uuid}/job/{job_uuid}/member/{uuid}/.
-    """
-
     serializer_class = serializers_get.MemberJobSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = StandardPagination
@@ -46,6 +39,55 @@ class MemberJobViewSet(ReadOnlyModelViewSet):
         if status:
             queryset = queryset.filter(status=status)
         return queryset
+
+    @action(detail=False, methods=["get"], url_path="pending-results")
+    def pending_results(self, request, *args, **kwargs):
+        queryset = self.get_queryset().annotate(
+            pending_result_count=Count(
+                "tasks",
+                filter=Q(
+                    tasks__submitted_at__isnull=False,
+                    tasks__metrics_submitted_at__isnull=True,
+                ),
+                distinct=True,
+            ),
+        ).filter(pending_result_count__gt=0)
+
+        data = serializers_get.PendingResultsJobSerializer(
+            queryset, many=True, context={"request": self.request},
+        ).data
+        return responses.SuccessResponse(data=data).get_response()
+
+    @action(detail=True, methods=["get"], url_path="pending-results")
+    def pending_results_detail(self, request, uuid=None, *args, **kwargs):
+        member_job = self.get_queryset().filter(uuid=uuid).first()
+        if member_job is None:
+            return responses.MissingItemError(
+                item_key=self.item_key, item_id=uuid,
+            ).get_response()
+
+        submitted_tasks = member_job.tasks.filter(
+            submitted_at__isnull=False,
+        ).select_related("requirement").order_by("period_start")
+
+        pending_rows = []
+        for day_number, task in enumerate(submitted_tasks, start=1):
+            if task.has_result:
+                continue
+            row = serializers_get.PendingResultsTaskSerializer(
+                task, context={"request": self.request},
+            ).data
+            row["day_number"] = day_number
+            pending_rows.append(row)
+
+        data = {
+            "org_uuid": member_job.job.company.uuid,
+            "org": member_job.job.company.name,
+            "job_uuid": member_job.job.uuid,
+            "job_title": member_job.job.title,
+            "tasks": pending_rows,
+        }
+        return responses.SuccessResponse(data=data).get_response()
 
 
 class AvailableJobViewSet(ReadOnlyModelViewSet):
@@ -216,7 +258,6 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
     @extend_schema(request=serializers_create.TaskContentSerializer)
     @action(detail=True, methods=["post"])
     def content(self, request, uuid=None, *args, **kwargs):
-        """The finished reel / photo files for this task."""
         serializer = serializers_create.TaskContentSerializer(data=request.data)
         try:
             serializer.is_valid(raise_exception=True)
@@ -268,11 +309,6 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
     @extend_schema(request=serializers_create.TaskResultSerializer)
     @action(detail=True, methods=["post", "patch"])
     def result(self, request, uuid=None, *args, **kwargs):
-        """How the post performed.
-
-        No submission deadline here: views only accumulate after posting,
-        so this is filled in days later.
-        """
         serializer = serializers_create.TaskResultSerializer(data=request.data)
         try:
             serializer.is_valid(raise_exception=True)

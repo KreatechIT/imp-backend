@@ -28,6 +28,11 @@ job_router.register(
     viewsets.SubmissionViewSet,
     basename="submission",
 )
+job_router.register(
+    r'job/(?P<job_uuid>[^/.]+)/result',
+    viewsets.ResultViewSet,
+    basename="result",
+)
 # Flat, cross-job/cross-org pending applications: /jobs/applications/pending/
 job_router.register(
     "applications/pending",

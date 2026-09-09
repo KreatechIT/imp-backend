@@ -85,7 +85,6 @@ class MemberJobSerializer(serializers.ModelSerializer):
     has_frames = serializers.SerializerMethodField()
 
     def get_has_frames(self, obj):
-        """Drives the FRAME READY badge on the frame editor's job picker."""
         return obj.job.frames.filter(status=1, archived=None).exists()
 
     class Meta:
@@ -113,6 +112,25 @@ class MemberJobSerializer(serializers.ModelSerializer):
         ]
 
 
+class PendingResultsJobSerializer(serializers.ModelSerializer):
+    org = serializers.CharField(source="job.company.name")
+    job_title = serializers.CharField(source="job.title")
+    pending_result_count = serializers.IntegerField()
+
+    class Meta:
+        model = models.MemberJob
+        fields = ["uuid", "org", "job_title", "pending_result_count"]
+
+
+class PendingResultsTaskSerializer(serializers.ModelSerializer):
+    platform = serializers.IntegerField(source="requirement.platform")
+    content_type = serializers.IntegerField(source="requirement.content_type")
+
+    class Meta:
+        model = models.MemberTask
+        fields = ["uuid", "platform", "content_type"]
+
+
 class TaskFileSerializer(serializers.ModelSerializer):
 
     class Meta:
@@ -131,7 +149,9 @@ class MemberTaskSerializer(serializers.ModelSerializer):
     member = serializers.CharField(source="member_job.member.full_name")
     member_uuid = serializers.UUIDField(source="member_job.member.uuid")
     org = serializers.CharField(source="member_job.job.company.name")
+    org_uuid = serializers.UUIDField(source="member_job.job.company.uuid")
     job_title = serializers.CharField(source="member_job.job.title")
+    job_uuid = serializers.UUIDField(source="member_job.job.uuid")
     member_job_uuid = serializers.UUIDField(source="member_job.uuid")
     platform = serializers.IntegerField(source="requirement.platform")
     content_type = serializers.IntegerField(source="requirement.content_type")
@@ -152,7 +172,9 @@ class MemberTaskSerializer(serializers.ModelSerializer):
             "member",
             "member_uuid",
             "org",
+            "org_uuid",
             "job_title",
+            "job_uuid",
             "member_job_uuid",
             "platform",
             "content_type",

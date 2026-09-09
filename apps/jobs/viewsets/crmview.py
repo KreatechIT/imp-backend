@@ -1,5 +1,5 @@
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
@@ -14,12 +14,6 @@ from core.pagination import StandardPagination
 
 
 class OrgScopedMixin:
-    """Everything under /jobs/org/{org_uuid}/ belongs to one org.
-
-    The org and the job come from the path now, so the parent is resolved
-    once here and every lookup below stays inside that scope.
-    """
-
     def get_org(self):
         return models.Company.objects.filter(
             uuid=self.kwargs.get("org_uuid"), archived=None,
@@ -242,13 +236,6 @@ class JobViewSet(OrgScopedMixin, ReadOnlyModelViewSet):
 
 
 class JobListViewSet(ReadOnlyModelViewSet):
-    """Flat, cross-org job list — /jobs/list/. Read-only.
-
-    JobViewSet above stays org-scoped for the admin CRUD flow; this exists
-    alongside it for callers that just need every job (with its uuid)
-    without knowing the org uuid up front.
-    """
-
     serializer_class = serializers_get.JobSerializer
     permission_classes = [permissions.IsAdmin]
     pagination_class = StandardPagination
@@ -363,12 +350,6 @@ class JobRequirementViewSet(OrgScopedMixin, ReadOnlyModelViewSet):
 
 
 class JobMemberViewSet(OrgScopedMixin, ReadOnlyModelViewSet):
-    """Who applied to this job, and the decision on each application.
-
-    One list for every state. `?status=1` is the pending queue, `?status=2`
-    the members currently working the job.
-    """
-
     serializer_class = serializers_get.MemberJobSerializer
     permission_classes = [permissions.IsAdmin]
     pagination_class = StandardPagination
@@ -407,7 +388,6 @@ class JobMemberViewSet(OrgScopedMixin, ReadOnlyModelViewSet):
 
     @extend_schema(request=serializers_create.EditMemberJobSerializer)
     def partial_update(self, request, uuid=None, *args, **kwargs):
-        """The escape hatch: set any field directly, no state guard."""
         serializer = serializers_create.EditMemberJobSerializer(data=request.data)
         try:
             serializer.is_valid(raise_exception=True)
@@ -510,14 +490,6 @@ class JobMemberViewSet(OrgScopedMixin, ReadOnlyModelViewSet):
 
 
 class PendingApplicationViewSet(ReadOnlyModelViewSet):
-    """Flat, cross-job/cross-org pending applications — /jobs/applications/pending/.
-
-    JobMemberViewSet above stays job-scoped (?status=1 there is the pending
-    queue for one job); this exists alongside it for callers that need every
-    still-applied member across every job/org in one paginated list, each
-    row carrying its own job_uuid and org_uuid.
-    """
-
     serializer_class = serializers_get.MemberJobSerializer
     permission_classes = [permissions.IsAdmin]
     pagination_class = StandardPagination
@@ -554,8 +526,6 @@ class SubmissionViewSet(ReadOnlyModelViewSet):
     lookup_field = "uuid"
     item_key = "Submission Id"
 
-    # status codes that give /pending/, /approved/, /rejected/ a fixed filter
-    # while /submission/ itself still takes ?status= like before.
     ACTION_STATUS = {
         "pending": "2",
         "approved": "3",
@@ -626,17 +596,14 @@ class SubmissionViewSet(ReadOnlyModelViewSet):
 
     @action(detail=False, methods=["get"])
     def pending(self, request, *args, **kwargs):
-        """Submissions awaiting review. Same filters as /submission/."""
         return self.list(request, *args, **kwargs)
 
     @action(detail=False, methods=["get"])
     def approved(self, request, *args, **kwargs):
-        """Approved submissions. Same filters as /submission/."""
         return self.list(request, *args, **kwargs)
 
     @action(detail=False, methods=["get"])
     def rejected(self, request, *args, **kwargs):
-        """Rejected submissions. Same filters as /submission/."""
         return self.list(request, *args, **kwargs)
 
     def get_task(self, uuid):
@@ -716,3 +683,75 @@ class SubmissionViewSet(ReadOnlyModelViewSet):
 
         data = self.serializer_class(task, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
+
+
+class ResultViewSet(ReadOnlyModelViewSet):
+    permission_classes = [permissions.IsAdmin]
+    lookup_field = "uuid"
+    item_key = "Member Job Id"
+
+    def base_queryset(self):
+        return models.MemberJob.objects.filter(
+            job__uuid=self.kwargs.get("job_uuid"), archived=None,
+        )
+
+    @action(detail=False, methods=["get"], url_path="pending")
+    def pending(self, request, *args, **kwargs):
+        queryset = self.base_queryset().annotate(
+            pending_result_count=Count(
+                "tasks",
+                filter=Q(
+                    tasks__submitted_at__isnull=False,
+                    tasks__metrics_submitted_at__isnull=True,
+                ),
+                distinct=True,
+            ),
+        ).filter(pending_result_count__gt=0)
+
+        data = [
+            {
+                "member_uuid": str(member_job.member.uuid),
+                "pending_result_count": member_job.pending_result_count,
+            }
+            for member_job in queryset.select_related("member")
+        ]
+        return responses.SuccessResponse(data=data).get_response()
+
+    @action(
+        detail=False, methods=["get"],
+        url_path=r"member/(?P<member_uuid>[^/.]+)",
+    )
+    def member(self, request, member_uuid=None, *args, **kwargs):
+        member_job = self.base_queryset().filter(
+            member__uuid=member_uuid,
+        ).first()
+        if member_job is None:
+            return responses.MissingItemError(
+                item_key=self.item_key, item_id=member_uuid,
+            ).get_response()
+
+        tasks = member_job.tasks.filter(
+            submitted_at__isnull=False,
+        ).select_related("requirement").order_by("period_start")
+
+        rows = []
+        for day_number, task in enumerate(tasks, start=1):
+            row = {
+                "uuid": str(task.uuid),
+                "day_number": day_number,
+                "platform": task.requirement.platform,
+                "content_type": task.requirement.content_type,
+                "has_result": task.has_result,
+            }
+            if task.has_result:
+                row["views"] = task.views
+                row["likes"] = task.likes
+                row["comments"] = task.comments
+                row["shares"] = task.shares
+                row["metrics_screenshot"] = (
+                    request.build_absolute_uri(task.metrics_screenshot.url)
+                    if task.metrics_screenshot else None
+                )
+            rows.append(row)
+
+        return responses.SuccessResponse(data={"tasks": rows}).get_response()
