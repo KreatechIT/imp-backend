@@ -1,7 +1,24 @@
+import datetime
+
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.jobs import choices
 from core import encryption
+
+
+def _normalize_end_date(end_date):
+    """A midnight `end_date` (date picker sending start-of-day, no time
+    component) would otherwise close the job before it ever opens. Treat it
+    as "through the end of that day" instead.
+    """
+    if end_date is None:
+        return end_date
+    local = timezone.localtime(end_date)
+    if local.time() == datetime.time.min:
+        local = local.replace(hour=23, minute=59, second=59, microsecond=999999)
+        return local.astimezone(datetime.timezone.utc)
+    return end_date
 
 
 class OrgSerializer(serializers.Serializer):
@@ -73,6 +90,8 @@ class JobSerializer(serializers.Serializer):
     def validate(self, attrs):
         start_date = attrs.get("start_date")
         end_date = attrs.get("end_date")
+        if end_date is not None:
+            end_date = attrs["end_date"] = _normalize_end_date(end_date)
         if start_date and end_date and end_date < start_date:
             raise serializers.ValidationError({
                 "end_date": "End date cannot be before start date."
@@ -110,6 +129,8 @@ class EditJobSerializer(serializers.Serializer):
     def validate(self, attrs):
         start_date = attrs.get("start_date")
         end_date = attrs.get("end_date")
+        if end_date is not None:
+            end_date = attrs["end_date"] = _normalize_end_date(end_date)
         if start_date and end_date and end_date < start_date:
             raise serializers.ValidationError({
                 "end_date": "End date cannot be before start date."
@@ -181,20 +202,6 @@ class TaskContentSerializer(serializers.Serializer):
 
 
 class TaskResultSerializer(serializers.Serializer):
-    """How the post performed. Every number is optional."""
+    """How the post performed, via a metrics screenshot."""
 
-    views = serializers.IntegerField(required=False, min_value=0, allow_null=True)
-    likes = serializers.IntegerField(required=False, min_value=0, allow_null=True)
-    comments = serializers.IntegerField(required=False, min_value=0, allow_null=True)
-    shares = serializers.IntegerField(required=False, min_value=0, allow_null=True)
-    metrics_screenshot = serializers.FileField(required=False, allow_null=True)
-
-    def validate(self, attrs):
-        if not any(
-            attrs.get(key) is not None
-            for key in ("views", "likes", "comments", "shares", "metrics_screenshot")
-        ):
-            raise serializers.ValidationError(
-                "At least one result figure is required."
-            )
-        return attrs
+    metrics_screenshot = serializers.FileField(required=True)

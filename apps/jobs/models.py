@@ -341,10 +341,6 @@ class MemberTask(TimeStampedModel):
 
     # how the post performed. Display only - nothing here feeds earnings
     # or the leaderboard.
-    views = models.PositiveIntegerField(blank=True, null=True)
-    likes = models.PositiveIntegerField(blank=True, null=True)
-    comments = models.PositiveIntegerField(blank=True, null=True)
-    shares = models.PositiveIntegerField(blank=True, null=True)
     metrics_screenshot = models.FileField(
         blank=True,
         null=True,
