@@ -744,10 +744,6 @@ class ResultViewSet(ReadOnlyModelViewSet):
                 "has_result": task.has_result,
             }
             if task.has_result:
-                row["views"] = task.views
-                row["likes"] = task.likes
-                row["comments"] = task.comments
-                row["shares"] = task.shares
                 row["metrics_screenshot"] = (
                     request.build_absolute_uri(task.metrics_screenshot.url)
                     if task.metrics_screenshot else None

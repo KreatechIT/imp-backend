@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 
 from apps.crmadmin import models as admin_models
@@ -37,7 +38,7 @@ class MemberPendingResultsAPITest(BaseAPITestCase):
             period_key="d1", period_start=today - timedelta(days=3),
             period_end=today - timedelta(days=3),
             submitted_at=timezone.now(), proof_link="https://instagram.com/p/1",
-            metrics_submitted_at=timezone.now(), views=100,
+            metrics_submitted_at=timezone.now(),
         )
         self.task_pending = models.MemberTask.objects.create(
             member_job=self.member_job, requirement=self.requirement,
@@ -86,8 +87,7 @@ class MemberPendingResultsAPITest(BaseAPITestCase):
         self.authenticate(self.member.user)
         response = self.client.post(
             f"/members/{self.member.uuid}/tasks/{self.task_pending.uuid}/result/",
-            data={"views": 500},
-            format="json",
+            data={"metrics_screenshot": SimpleUploadedFile("shot.jpg", b"data")},
         )
         assert response.status_code == 200
 
@@ -103,8 +103,7 @@ class MemberPendingResultsAPITest(BaseAPITestCase):
         self.authenticate(self.member.user)
         response = self.client.post(
             f"/members/{self.member.uuid}/tasks/{self.task_missed.uuid}/result/",
-            data={"views": 10},
-            format="json",
+            data={"metrics_screenshot": SimpleUploadedFile("shot.jpg", b"data")},
         )
         assert response.status_code == 400
 
@@ -116,8 +115,7 @@ class MemberPendingResultsAPITest(BaseAPITestCase):
 
         response = self.client.post(
             f"/members/{self.member.uuid}/tasks/{self.task_pending.uuid}/result/",
-            data={"views": 500},
-            format="json",
+            data={"metrics_screenshot": SimpleUploadedFile("shot.jpg", b"data")},
         )
         assert response.status_code == 200
 
@@ -138,8 +136,7 @@ class MemberPendingResultsAPITest(BaseAPITestCase):
         self.authenticate(self.member.user)
         self.client.post(
             f"/members/{self.member.uuid}/tasks/{self.task_pending.uuid}/result/",
-            data={"views": 500},
-            format="json",
+            data={"metrics_screenshot": SimpleUploadedFile("shot.jpg", b"data")},
         )
 
         assert not Notification.objects.filter(
@@ -183,7 +180,7 @@ class ResultReminderTaskTest(BaseAPITestCase):
         assert "1 day" in notif.message
 
     def test_no_reminder_once_result_submitted(self):
-        self.task.submit_result(views=10)
+        self.task.submit_result(metrics_screenshot=SimpleUploadedFile("shot.jpg", b"data"))
 
         send_pending_result_reminders()
 
@@ -219,7 +216,8 @@ class AdminResultAPITest(BaseAPITestCase):
             period_key="d1", period_start=today - timedelta(days=2),
             period_end=today - timedelta(days=2),
             submitted_at=timezone.now(),
-            metrics_submitted_at=timezone.now(), views=250, likes=30,
+            metrics_submitted_at=timezone.now(),
+            metrics_screenshot=SimpleUploadedFile("shot.jpg", b"data"),
         )
         self.task_pending = models.MemberTask.objects.create(
             member_job=self.member_job, requirement=self.requirement,
@@ -246,10 +244,9 @@ class AdminResultAPITest(BaseAPITestCase):
         tasks = response.json()["tasks"]
         assert len(tasks) == 2
         done_row = next(t for t in tasks if t["has_result"])
-        assert done_row["views"] == 250
-        assert done_row["likes"] == 30
+        assert done_row["metrics_screenshot"]
         pending_row = next(t for t in tasks if not t["has_result"])
-        assert "views" not in pending_row
+        assert "metrics_screenshot" not in pending_row
 
     def test_requires_admin(self):
         self.authenticate(self.member.user)
