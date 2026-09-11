@@ -24,12 +24,6 @@ def rendered_content_upload_to(instance, filename):
 
 
 class Frame(TimeStampedModel):
-    """An overlay an admin uploads for one job.
-
-    The backend keeps the library, says which frames belong to which
-    job, and composites the overlay server-side (see apps.frames.tasks).
-    """
-
     job = models.ForeignKey(
         Job,
         verbose_name=_("Job"),
@@ -92,19 +86,10 @@ class Frame(TimeStampedModel):
         return self.status == 1 and self.archived is None
 
     def accepts(self, media_type):
-        """BOTH frames fit either import; the rest must match exactly."""
         return self.media_type == 1 or self.media_type == media_type
 
 
 class RenderedContent(TimeStampedModel):
-    """One member-uploaded photo/video composited with a frame.
-
-    Standalone: the Frame Editor is not tied to a task or a submission,
-    only to a job (through its frame). The original upload is kept for
-    the admin content library; the rendered file is produced by a
-    background worker (FFmpeg), see apps.jobs.tasks.
-    """
-
     frame = models.ForeignKey(
         Frame,
         verbose_name=_("Frame"),
@@ -141,8 +126,8 @@ class RenderedContent(TimeStampedModel):
         choices=choices.RENDER_STATUS_CHOICES,
         default=1,
     )
-    crop_x = models.PositiveIntegerField(blank=True, null=True)
-    crop_y = models.PositiveIntegerField(blank=True, null=True)
+    crop_x = models.IntegerField(blank=True, null=True)
+    crop_y = models.IntegerField(blank=True, null=True)
     crop_width = models.PositiveIntegerField(blank=True, null=True)
     crop_height = models.PositiveIntegerField(blank=True, null=True)
     trim_in = models.FloatField(blank=True, null=True)

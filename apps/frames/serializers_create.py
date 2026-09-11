@@ -7,8 +7,6 @@ from core import encryption
 class FrameSerializer(serializers.Serializer):
     name = serializers.CharField(required=True)
     job_uuid = serializers.UUIDField(required=True)
-    # Model validators only run on full_clean(), which objects.create()
-    # skips, so the checks are repeated here where they actually fire.
     image = serializers.ImageField(
         required=True,
         validators=[
@@ -33,8 +31,8 @@ class RenderRequestSerializer(serializers.Serializer):
         required=True,
         validators=[encryption.validate_content_file_size],
     )
-    crop_x = serializers.IntegerField(required=False, min_value=0)
-    crop_y = serializers.IntegerField(required=False, min_value=0)
+    crop_x = serializers.IntegerField(required=False)
+    crop_y = serializers.IntegerField(required=False)
     crop_width = serializers.IntegerField(required=False, min_value=1)
     crop_height = serializers.IntegerField(required=False, min_value=1)
     trim_in = serializers.FloatField(required=False, min_value=0)

@@ -6,7 +6,7 @@ from django.db.models import Prefetch, Q
 from django.utils import timezone
 
 from apps.jobs import models as job_models
-from apps.jobs.helper_functions import resolve_period
+from apps.jobs.helper_functions import member_start_date, resolve_period
 from apps.members.models import Member
 
 
@@ -27,18 +27,20 @@ def month_bounds(month_key=None):
     )
 
 
-def _job_window(job, from_date, to_date):
+def _job_window(job, from_date, to_date, joined=None):
     start = max(from_date, timezone.localtime(job.start_date).date())
+    if joined:
+        start = max(start, joined)
     end = to_date
     if job.end_date:
         end = min(end, timezone.localtime(job.end_date).date())
     return start, end
 
 
-def iter_periods(job, from_date, to_date):
-    day, limit = _job_window(job, from_date, to_date)
+def iter_periods(job, from_date, to_date, joined=None):
+    day, limit = _job_window(job, from_date, to_date, joined)
     while day <= limit:
-        period_key, period_start, period_end = resolve_period(job, day)
+        period_key, period_start, period_end = resolve_period(job, day, joined)
         yield period_key, period_start, period_end
         day = period_end + timedelta(days=1)
 
@@ -52,8 +54,8 @@ def _cycle_end(day, payment_period):
     return _month_end(day)
 
 
-def payment_cycles(job, from_date, to_date):
-    day, limit = _job_window(job, from_date, to_date)
+def payment_cycles(job, from_date, to_date, joined=None):
+    day, limit = _job_window(job, from_date, to_date, joined)
     cycles = 0
     while day <= limit:
         cycles += 1
@@ -124,7 +126,8 @@ def period_results(member_job, from_date, to_date, approved_periods=None):
     today = timezone.localdate()
     missed = []
     posted = 0
-    for period_key, period_start, period_end in iter_periods(job, from_date, to_date):
+    joined = member_start_date(member_job)
+    for period_key, period_start, period_end in iter_periods(job, from_date, to_date, joined):
         if period_end >= today:
             continue
         if len(approved_periods.get(period_key, ())) < required:
@@ -160,7 +163,7 @@ def earnings_breakdowns(member_uuids=None, month_key=None):
     breakdowns = {}
     for member_job in member_jobs:
         job = member_job.job
-        cycles = payment_cycles(job, from_date, to_date)
+        cycles = payment_cycles(job, from_date, to_date, member_start_date(member_job))
         missed, posted = period_results(
             member_job, from_date, to_date, approved.get(member_job.id, {}),
         )

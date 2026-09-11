@@ -13,8 +13,13 @@ def _month_end(day):
     return day.replace(day=calendar.monthrange(day.year, day.month)[1])
 
 
-def resolve_period(job, on_date=None):
-    """The period covering on_date, clipped to the job's own window."""
+def member_start_date(member_job):
+    if member_job.joined:
+        return member_job.joined
+    return timezone.localtime(member_job.created).date()
+
+
+def resolve_period(job, on_date=None, joined=None):
     day = on_date or timezone.localdate()
 
     if job.recurrence == 1:
@@ -28,13 +33,14 @@ def resolve_period(job, on_date=None):
         period_key, end = day.strftime("%Y-%m"), _month_end(day)
 
     start = max(start, timezone.localtime(job.start_date).date())
+    if joined:
+        start = max(start, joined)
     if job.end_date:
         end = min(end, timezone.localtime(job.end_date).date())
     return period_key, start, end
 
 
 def live_member_jobs(member_uuid):
-    """The member's jobs that are open for work right now."""
     now = timezone.now()
     return (
         models.MemberJob.objects
@@ -53,16 +59,13 @@ def live_member_jobs(member_uuid):
 
 
 def ensure_today_tasks(member_uuid):
-    """Create this period's tasks on first read, the way missions enrol.
-
-    Nothing is generated ahead of time, so a job that is edited, paused or
-    archived simply stops producing tasks and leaves nothing stale behind.
-    """
     period_keys = []
     pending = []
 
     for member_job in live_member_jobs(member_uuid):
-        period_key, period_start, period_end = resolve_period(member_job.job)
+        period_key, period_start, period_end = resolve_period(
+            member_job.job, joined=member_start_date(member_job),
+        )
         period_keys.append(period_key)
 
         for requirement in member_job.job.requirements.filter(archived=None):
@@ -76,7 +79,6 @@ def ensure_today_tasks(member_uuid):
                 )
             )
 
-    # the unique constraint absorbs the rows that are already there
     existing_keys = set(
         models.MemberTask.objects
         .filter(member_job__member__uuid=member_uuid, period_key__in=period_keys)
@@ -120,6 +122,5 @@ VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".m4v", ".webm"}
 
 
 def media_type_for(filename):
-    """Video or photo, from the file extension."""
     ext = os.path.splitext(filename or "")[1].lower()
     return 1 if ext in VIDEO_EXTENSIONS else 2

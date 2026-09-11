@@ -8,6 +8,119 @@ from django.core.files import File
 
 from apps.notifications import helper_functions as notifications
 
+STRETCH_TO_FRAME = "scale2ref=w=trunc(iw/2)*2:h=trunc(ih/2)*2[content][frame]"
+
+MAX_CANVAS_LONG_EDGE = 1920
+MAX_CANVAS_SHORT_EDGE = 1080
+
+
+def _capped_canvas(frame_size):
+    frame_width, frame_height = frame_size
+    if frame_width >= frame_height:
+        max_width, max_height = MAX_CANVAS_LONG_EDGE, MAX_CANVAS_SHORT_EDGE
+    else:
+        max_width, max_height = MAX_CANVAS_SHORT_EDGE, MAX_CANVAS_LONG_EDGE
+
+    scale = min(1.0, max_width / frame_width, max_height / frame_height)
+    if scale >= 1.0:
+        return None
+    return (
+        max(2, int(frame_width * scale) // 2 * 2),
+        max(2, int(frame_height * scale) // 2 * 2),
+    )
+
+
+def _probe_size(path):
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=width,height",
+                "-of", "csv=p=0:s=x",
+                path,
+            ],
+            capture_output=True, timeout=30,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        width, height = result.stdout.decode().strip().splitlines()[0].split("x")
+        return int(width), int(height)
+    except (ValueError, IndexError):
+        return None
+
+
+def _visible_part(rect, source_size):
+    x, y, width, height = rect
+    source_width, source_height = source_size
+    left, top = max(x, 0), max(y, 0)
+    right, bottom = min(x + width, source_width), min(y + height, source_height)
+    if right <= left or bottom <= top:
+        return None
+    return left, top, right - left, bottom - top
+
+
+def _content_graph(rendered, content_path, frame_path):
+    frame_size = _probe_size(frame_path)
+    canvas = _capped_canvas(frame_size) if frame_size else None
+
+    def stretch(filters):
+        if canvas:
+            chain = ",".join([*filters, f"scale={canvas[0]}:{canvas[1]}"])
+            return (
+                f"[0:v]{chain}[content];"
+                f"[1:v]scale={canvas[0]}:{canvas[1]}[frame]"
+            )
+        if filters:
+            return f"[0:v]{','.join(filters)}[cut];[cut][1:v]{STRETCH_TO_FRAME}"
+        return f"[0:v][1:v]{STRETCH_TO_FRAME}"
+
+    has_crop = all(
+        v is not None for v in (
+            rendered.crop_x, rendered.crop_y,
+            rendered.crop_width, rendered.crop_height,
+        )
+    )
+    if not has_crop:
+        return stretch([])
+
+    rect = (
+        rendered.crop_x, rendered.crop_y,
+        rendered.crop_width, rendered.crop_height,
+    )
+    source_size = _probe_size(content_path)
+    visible = _visible_part(rect, source_size) if source_size else None
+    if visible is None:
+        return stretch([])
+
+    left, top, visible_width, visible_height = visible
+    cut = f"crop={visible_width}:{visible_height}:{left}:{top}"
+
+    if visible == rect or frame_size is None:
+        return stretch([cut])
+
+    x, y, width, height = rect
+    canvas_width, canvas_height = canvas or (
+        frame_size[0] // 2 * 2, frame_size[1] // 2 * 2,
+    )
+
+    inner_width = max(1, min(canvas_width, round(canvas_width * visible_width / width)))
+    inner_height = max(1, min(canvas_height, round(canvas_height * visible_height / height)))
+    offset_x = min(max(0, round(canvas_width * (left - x) / width)), canvas_width - inner_width)
+    offset_y = min(max(0, round(canvas_height * (top - y) / height)), canvas_height - inner_height)
+
+    frame_fit = (
+        f"scale={canvas_width}:{canvas_height}" if canvas else "null"
+    )
+    return (
+        f"[0:v]{cut},scale={inner_width}:{inner_height},"
+        f"pad={canvas_width}:{canvas_height}:{offset_x}:{offset_y}:color=black"
+        f"[content];[1:v]{frame_fit}[frame]"
+    )
+
 
 @shared_task
 def render_content(rendered_content_id):
@@ -23,10 +136,6 @@ def render_content(rendered_content_id):
     is_animated_frame = frame.image.name.lower().endswith(".gif")
     is_video_content = rendered.media_type == 1
 
-    has_crop = all(
-        v is not None
-        for v in (rendered.crop_x, rendered.crop_y, rendered.crop_width, rendered.crop_height)
-    )
     has_trim = (
         is_video_content
         and rendered.trim_in is not None
@@ -53,26 +162,7 @@ def render_content(rendered_content_id):
             out_ext = ".jpg"
         out_path = os.path.join(tmp_dir, f"{uuid4().hex}{out_ext}")
 
-        # The frame is the fixed canvas; content varies in size, so it is
-        # stretched edge-to-edge onto the frame's exact resolution before
-        # the overlay is drawn on top - otherwise a size mismatch leaves
-        # part of the canvas unframed or crops the content. Rounded to an
-        # even width/height since libx264 rejects odd dimensions and an
-        # uploaded frame image is not guaranteed to have them.
-        if has_crop:
-            content_filter = (
-                f"[0:v]crop={rendered.crop_width}:{rendered.crop_height}:"
-                f"{rendered.crop_x}:{rendered.crop_y}[content_in];"
-            )
-            content_source = "[content_in]"
-        else:
-            content_filter = ""
-            content_source = "[0:v]"
-
-        scale_to_frame = (
-            f"{content_filter}{content_source}[1:v]"
-            "scale2ref=w=trunc(iw/2)*2:h=trunc(ih/2)*2[content][frame]"
-        )
+        scale_to_frame = _content_graph(rendered, content_path, frame_path)
 
         if is_video_content:
             cmd = ["ffmpeg", "-y"]
@@ -93,10 +183,6 @@ def render_content(rendered_content_id):
             ]
         else:
             if is_animated_frame:
-                # A full-resolution GIF has no inter-frame compression and
-                # balloons to tens of MB over many frames, so the merged
-                # animation is capped to 480px wide / 8fps and quantized
-                # through a generated palette before the final GIF encode.
                 cmd = [
                     "ffmpeg", "-y",
                     "-loop", "1", "-i", content_path,
