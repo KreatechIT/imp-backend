@@ -79,8 +79,7 @@ class JobSerializer(serializers.Serializer):
         choices=choices.PAYMENT_PERIOD_CHOICES, default=3,
     )
     deduction_per_miss = serializers.DecimalField(
-        max_digits=12, decimal_places=2, min_value=0,
-        required=False, allow_null=True,
+        max_digits=12, decimal_places=2, min_value=0, required=True,
     )
     start_date = serializers.DateTimeField(required=True)
     end_date = serializers.DateTimeField(required=False, allow_null=True)
@@ -117,8 +116,7 @@ class EditJobSerializer(serializers.Serializer):
         choices=choices.PAYMENT_PERIOD_CHOICES, required=False,
     )
     deduction_per_miss = serializers.DecimalField(
-        max_digits=12, decimal_places=2, min_value=0,
-        required=False, allow_null=True,
+        max_digits=12, decimal_places=2, min_value=0, required=False,
     )
     start_date = serializers.DateTimeField(required=False)
     end_date = serializers.DateTimeField(required=False, allow_null=True)
