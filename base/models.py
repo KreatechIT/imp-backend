@@ -2,6 +2,8 @@ import uuid
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -123,3 +125,37 @@ class UserModel(AbstractBaseUser):
     @property
     def is_member(self):
         return getattr(self, "member", None)
+
+
+class AuditLog(TimeStampedModel):
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="audit_logs",
+    )
+    action = models.CharField(max_length=100)
+    status = models.CharField(max_length=50, blank=True, null=True)
+
+    target_content_type = models.ForeignKey(
+        ContentType,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    target_object_id = models.CharField(max_length=64, blank=True, null=True)
+    target = GenericForeignKey("target_content_type", "target_object_id")
+
+    detail = models.TextField(blank=True, null=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["created"]),
+            models.Index(fields=["action"]),
+            models.Index(fields=["target_content_type", "target_object_id"]),
+        ]
+
+    def __str__(self):
+        return f"{self.action} by {self.actor}"
