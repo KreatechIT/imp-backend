@@ -68,6 +68,16 @@ class MemberViewSet(ReadOnlyModelViewSet):
         password = validated_data.pop("password")
         validated_data.pop("confirm_password")
 
+        role_uuid = validated_data.pop("role_uuid", None)
+        role = None
+        if role_uuid:
+            try:
+                role = models.Role.objects.get(uuid=role_uuid)
+            except models.Role.DoesNotExist:
+                return responses.MissingItemError(
+                    item_key="Role", item_id=role_uuid,
+                ).get_response()
+
         if UserModel.objects.filter(username=username).exists():
             return responses.ExistingDataError(
                 item_key="Username", item_id=username,
@@ -78,7 +88,9 @@ class MemberViewSet(ReadOnlyModelViewSet):
                 user = UserModel.objects.create(username=username)
                 user.set_password(password)
                 user.save()
-                member = models.Member.objects.create(user=user, **validated_data)
+                member = models.Member.objects.create(
+                    user=user, role=role, **validated_data
+                )
         except IntegrityError:
             return responses.ExistingDataError(
                 error_message="Phone number or email already exists",
@@ -95,6 +107,18 @@ class MemberViewSet(ReadOnlyModelViewSet):
         except ValidationError as e:
             return responses.InvalidDataError(details=e.detail).get_response()
         validated_data = serializer.validated_data
+
+        if "role_uuid" in validated_data:
+            role_uuid = validated_data.pop("role_uuid")
+            role = None
+            if role_uuid:
+                try:
+                    role = models.Role.objects.get(uuid=role_uuid)
+                except models.Role.DoesNotExist:
+                    return responses.MissingItemError(
+                        item_key="Role", item_id=role_uuid,
+                    ).get_response()
+            validated_data["role"] = role
 
         try:
             member = models.Member.objects.get(uuid=uuid)
@@ -166,6 +190,15 @@ class MemberViewSet(ReadOnlyModelViewSet):
 
         data = serializers_get.MemberSerializer(member, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
+
+
+class RoleViewSet(ReadOnlyModelViewSet):
+    serializer_class = serializers_get.RoleSerializer
+    permission_classes = [permissions.IsAdmin]
+    lookup_field = "uuid"
+
+    def get_queryset(self):
+        return models.Role.objects.filter(archived=None).order_by("name")
 
 
 class BankDetailViewSet(ReadOnlyModelViewSet):

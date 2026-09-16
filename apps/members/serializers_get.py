@@ -60,9 +60,30 @@ class PlatformAccountSerializer(serializers.ModelSerializer):
         ]
 
 
+class RoleSerializer(serializers.ModelSerializer):
+    total_assigned = serializers.SerializerMethodField()
+    status = serializers.CharField(source="get_status_display")
+
+    def get_total_assigned(self, obj):
+        return obj.members.all().count()
+
+    class Meta:
+        model = models.Role
+        fields = [
+            "uuid",
+            "name",
+            "status",
+            "total_assigned",
+        ]
+
+
 class MemberSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username")
     last_login = serializers.DateTimeField(source="user.last_login")
+    member_role = serializers.SerializerMethodField()
+
+    def get_member_role(self, obj):
+        return obj.role.name if obj.role else None
 
     class Meta:
         model = models.Member
@@ -75,6 +96,7 @@ class MemberSerializer(serializers.ModelSerializer):
             "date_of_birth",
             "profile_picture",
             "status",
+            "member_role",
             "joined",
             "last_login",
             "created",

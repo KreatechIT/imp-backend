@@ -16,12 +16,47 @@ def member_upload_to(instance, filename):
     return f"member/{uuid4().hex}{ext}"
 
 
+class Role(TimeStampedModel):
+    name = models.CharField(max_length=100, unique=True)
+    status = models.IntegerField(
+        verbose_name=_("Status"),
+        choices=choices.ROLE_STATUS_CHOICES,
+        default=1,
+    )
+    archived = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["created"]),
+            models.Index(fields=["name"]),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    def archive(self):
+        self.archived = timezone.now()
+        self.save()
+
+    @property
+    def is_archived(self):
+        return self.archived is not None
+
+
 class Member(TimeStampedModel):
     user = models.OneToOneField(
         UserModel,
         verbose_name=_("User"),
         on_delete=models.CASCADE,
         related_name="member",
+    )
+    role = models.ForeignKey(
+        Role,
+        verbose_name=_("Role"),
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="members",
     )
     full_name = models.CharField(
         verbose_name=_("Full Name"),

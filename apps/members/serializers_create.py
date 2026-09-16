@@ -5,6 +5,7 @@ from apps.members import choices
 
 class MemberSerializer(serializers.Serializer):
     username = serializers.CharField(required=True)
+    role_uuid = serializers.UUIDField(required=False, allow_null=True)
     full_name = serializers.CharField(
         required=False, allow_null=True, allow_blank=True,
     )
@@ -38,6 +39,7 @@ class MemberSerializer(serializers.Serializer):
 
 
 class EditMemberSerializer(serializers.Serializer):
+    role_uuid = serializers.UUIDField(required=False, allow_null=True)
     full_name = serializers.CharField(required=False)
     phone_number = serializers.CharField(
         required=False, allow_null=True, allow_blank=True, max_length=20,

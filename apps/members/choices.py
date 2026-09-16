@@ -6,6 +6,11 @@ MEMBER_STATUS_CHOICES = (
     (3, _("SUSPENDED")),
 )
 
+ROLE_STATUS_CHOICES = (
+    (1, _("ACTIVE")),
+    (2, _("INACTIVE")),
+)
+
 PLATFORM_CHOICES = (
     (1, _("INSTAGRAM")),
     (2, _("TIKTOK")),
