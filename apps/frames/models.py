@@ -24,6 +24,11 @@ def rendered_content_upload_to(instance, filename):
 
 
 class Frame(TimeStampedModel):
+    frame_type = models.IntegerField(
+        verbose_name=_("Frame Type"),
+        choices=choices.FRAME_TYPE_CHOICES,
+        default=1,
+    )
     name = models.CharField(
         verbose_name=_("Name"),
         max_length=150,
@@ -37,6 +42,8 @@ class Frame(TimeStampedModel):
     )
     image = ImageField(
         verbose_name=_("Frame Image"),
+        blank=True,
+        null=True,
         upload_to=frame_upload_to,
         validators=[
             encryption.validate_file_size,
@@ -69,6 +76,7 @@ class Frame(TimeStampedModel):
             models.Index(fields=["created"]),
             models.Index(fields=["status"]),
             models.Index(fields=["media_type"]),
+            models.Index(fields=["frame_type"]),
         ]
 
     def __str__(self):

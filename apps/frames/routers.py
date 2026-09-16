@@ -23,6 +23,9 @@ member_router.register(
 # can't cope with the regex-prefixed job/<uuid> registration below.
 library_router = routers.SimpleRouter()
 library_router.register(
+    "postdesk", viewsets.FramePostDeskViewSet, basename="frame-postdesk",
+)
+library_router.register(
     "library", viewsets.FrameLibraryViewSet, basename="frame-library",
 )
 library_router.register(

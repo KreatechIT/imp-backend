@@ -9,7 +9,7 @@ from django.utils import timezone
 from PIL import Image, ImageDraw
 
 from apps.frames import models
-from apps.jobs.models import Company, Job
+from apps.jobs.models import Company, Job, MemberJob
 from apps.members.models import Member
 from base.base_test_classes import BaseAPITestCase
 
@@ -90,11 +90,12 @@ class FrameRenderAPITest(BaseAPITestCase):
         self.member = Member.objects.create(user=self.user)
         company = Company.objects.create(name="Acme")
         job = Job.objects.create(company=company, title="Job", start_date=timezone.now())
+        MemberJob.objects.create(member=self.member, job=job, status=2)
         self.frame = models.Frame.objects.create(
-            job=job,
             name="Test Frame",
             image=_frame_upload(),
         )
+        models.FrameAssignment.objects.create(frame=self.frame, job=job)
         self.url = f"/frame/{self.frame.uuid}/render/"
 
     @override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)

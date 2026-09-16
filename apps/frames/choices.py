@@ -14,6 +14,11 @@ FRAME_MEDIA_TYPE_CHOICES = (
     (3, _("PHOTO")),
 )
 
+FRAME_TYPE_CHOICES = (
+    (1, _("JOB")),
+    (2, _("POSTDESK")),
+)
+
 FRAME_STATUS_CHOICES = (
     (1, _("ACTIVE")),
     (2, _("INACTIVE")),

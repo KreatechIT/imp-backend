@@ -50,6 +50,17 @@ class RenderedContentSerializer(serializers.ModelSerializer):
         ]
 
 
+class AssignedMemberSerializer(serializers.Serializer):
+    uuid = serializers.UUIDField()
+    username = serializers.CharField(source="user.username")
+    full_name = serializers.CharField()
+
+
+class AssignedUserGroupSerializer(serializers.Serializer):
+    uuid = serializers.UUIDField()
+    name = serializers.CharField()
+
+
 class FrameSerializer(serializers.ModelSerializer):
     job_uuid = serializers.SerializerMethodField()
     job_title = serializers.SerializerMethodField()
@@ -68,6 +79,7 @@ class FrameSerializer(serializers.ModelSerializer):
         model = models.Frame
         fields = [
             "uuid",
+            "frame_type",
             "job_uuid",
             "job_title",
             "org",
@@ -81,4 +93,23 @@ class FrameSerializer(serializers.ModelSerializer):
             "is_live",
             "created",
             "modified",
+        ]
+
+
+class FrameDetailSerializer(FrameSerializer):
+    total_assigned = serializers.IntegerField(read_only=True)
+    members = serializers.SerializerMethodField()
+    user_groups = serializers.SerializerMethodField()
+
+    def get_members(self, obj):
+        members = [a.member for a in obj.assignments.all() if a.member_id]
+        return AssignedMemberSerializer(members, many=True).data
+
+    def get_user_groups(self, obj):
+        groups = [a.user_group for a in obj.assignments.all() if a.user_group_id]
+        return AssignedUserGroupSerializer(groups, many=True).data
+
+    class Meta(FrameSerializer.Meta):
+        fields = FrameSerializer.Meta.fields + [
+            "total_assigned", "members", "user_groups",
         ]

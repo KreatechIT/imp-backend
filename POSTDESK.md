@@ -88,9 +88,10 @@ Unknown member uuids return `400` naming the offending uuid rather than silently
 
 ```python
 class Frame(TimeStampedModel):         # apps/frames/models.py
+    frame_type   = IntegerField(choices=FRAME_TYPE_CHOICES, default=1)  # 1=JOB, 2=POSTDESK
     name         = CharField(150)
-    background   = ImageField(null=True)     # NEW — layer 1, image only
-    image        = ImageField(...)           # the overlay — image or GIF, transparent
+    background   = ImageField(null=True)     # layer 1, image only
+    image        = ImageField(null=True)     # the overlay — image or GIF, transparent
     aspect_ratio, media_type, ordering, status, archived
     # job FK REMOVED
 
@@ -101,6 +102,8 @@ class FrameAssignment(TimeStampedModel):
     user_group = FK(UserGroup, null=True)    # KOC group
     status, archived
 ```
+
+`frame_type` is the explicit discriminator between the two products. Before it existed the type was *inferred* from what a frame was assigned to, which left a frame with no assignments ambiguous and allowed a frame to appear in both products' lists. It is set on create and cannot be changed afterwards.
 
 **Constraint — `frame_assignment_single_target`:** each row must have exactly one of `job` / `member` / `user_group`. A row with none (points at nothing) or two (ambiguous) is rejected by Postgres.
 
@@ -124,6 +127,22 @@ It relies on `prefetch_related("assignments__job__company")` in the viewset quer
 
 > ⚠️ It returns `None` for PostDesk frames, so serializer fields reading it use `SerializerMethodField` with a null guard. A plain `source="job.uuid"` raises `AttributeError` on `None`.
 
+### Render authorization
+
+`POST /frame/{uuid}/render/` previously looked up the frame with no scoping at all:
+
+```python
+frame = models.Frame.objects.filter(uuid=frame_uuid, archived=None).first()
+```
+
+Any authenticated member could render onto **any** frame by uuid — bypassing the careful scoping in `MemberFrameViewSet`. This predates this branch, but putting both products in one table made it worse: an IMP member could reach PostDesk frames.
+
+It now resolves entitlement before allowing the render:
+- **Job frame** — the member must hold that job with an active `MemberJob` (`status=2`, not archived)
+- **PostDesk frame** — assigned to them individually, or via a group they belong to
+
+> ⚠️ This fixed a real hole, and it broke five existing render tests whose setup created a member and a job frame **without** a `MemberJob` linking them — an impossible real-world state that only passed because nothing was checking. Their setup was corrected rather than the check loosened.
+
 ### Multiple frames per KOC — intentional
 
 There is **no** unique-active-frame-per-member constraint. A KOC can hold several frames (individually assigned plus any from their groups) and picks one per video — matching how the existing IMP frame editor already works (it renders an "Available Frames" grid).
@@ -135,6 +154,69 @@ Resolution is a simple union, with no precedence rule and nothing ever deleted:
 ```
 frames_for(koc) = individual assignments ∪ assignments of every group they belong to
 ```
+
+### Endpoints
+
+Writes go through **one** endpoint for both frame types, discriminated by `frame_type`. Reads are split, because the admin has two different screens.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/frame/library/` | Create — job **or** PostDesk frame |
+| `PATCH` | `/frame/library/{uuid}/` | Edit — either type |
+| `PATCH` | `/frame/library/{uuid}/archive/` | Archive — either type |
+| `GET` | `/frame/library/` | **Job frames only.** Filters: `job_uuid`, `media_type`, `status` |
+| `GET` | `/frame/postdesk/` | **PostDesk frames only**, with assignments. Filters: `name`, `status` |
+| `GET` | `/frame/postdesk/{uuid}/` | PostDesk detail |
+
+`/jobs/org/{org}/job/{job}/frames/` is unchanged and still works.
+
+**Create a job frame** (exactly as before):
+```json
+{ "name": "...", "job_uuid": "<uuid>", "image": <file> }
+```
+
+**Create a PostDesk frame:**
+```json
+{ "name": "Spring Neon", "frame_type": 2,
+  "background": <file>, "image": <file>,
+  "members": ["<uuid>"], "user_groups": ["<uuid>"] }
+```
+
+At least one of `background` / `image` is required for PostDesk frames — either or both.
+
+**Cross-type fields are rejected, not ignored:**
+
+| Sent | Response |
+|---|---|
+| `members` / `user_groups` / `background` on a job frame | `{"members": ["Not allowed for job frames."]}` |
+| `job_uuid` on a PostDesk frame | `{"job_uuid": ["Not allowed for PostDesk frames."]}` |
+| PostDesk with neither image | `{"background": ["Provide a background, an overlay frame, or both."]}` |
+| Job frame with no `job_uuid` / no `image` | `{"...": ["Required for job frames."]}` |
+
+`PATCH` validates against the frame's **stored** type, so member assignments can't be added to a job frame after creation. `frame_type` itself cannot be changed after creation — it's ignored on update.
+
+**PostDesk response shape** (`GET /frame/postdesk/{uuid}/`):
+```json
+{
+  "uuid": "...", "frame_type": 2,
+  "job_uuid": null, "job_title": null, "org": null,
+  "name": "Spring Neon",
+  "background": "http://host/media/frame/....png",
+  "image": "http://host/media/frame/....png",
+  "aspect_ratio": 1, "media_type": 1, "ordering": 0,
+  "status": 1, "is_live": true,
+  "created": "...", "modified": "...",
+  "total_assigned": 2,
+  "members": [{ "uuid": "...", "username": "...", "full_name": "..." }],
+  "user_groups": [{ "uuid": "...", "name": "..." }]
+}
+```
+
+Image fields are returned as **absolute URLs**.
+
+> ⚠️ `total_assigned` counts assignment **rows**, not people. A frame assigned to 1 member and 1 group reports `2`, regardless of how many members that group holds. If the UI needs a headcount, that's a different calculation.
+
+Sending `members` / `user_groups` on `PATCH` **replaces** the whole set. Omitting them leaves assignments untouched.
 
 ### Query changes
 
@@ -189,7 +271,7 @@ No `AuditLog.objects.create(...)` calls are wired up yet — the model exists, t
 |---|---|
 | `base` | `0003_auditlog` |
 | `members` | `0002_role_member_role_...`, `0003_usergroup` |
-| `frames` | `0005_frame_background_frameassignment`, `0006_remove_frame_job` |
+| `frames` | `0005_frame_background_frameassignment`, `0006_remove_frame_job`, `0007_alter_frame_image`, `0008_frame_frame_type_and_more` |
 
 ### ⚠️ Ordering is critical
 
@@ -226,9 +308,13 @@ If the target environment has no frames, skip the backfill — but don't run it 
 ## 7. Test status
 
 ```bash
-python -m pytest apps/frames/tests/    # 8 passed
-python -m pytest                       # 13 failed, 27 passed
+python -m pytest apps/frames/tests/    # 56 passed
+python -m pytest                       # 13 failed, 75 passed
 ```
+
+`apps/frames/tests/test_user_journey.py` walks both products as a real user: admin creates a KOC with the `koc` role → puts them in a group → creates a frame assigned to that group → KOC logs in (checking `member_role`) → renders → downloads → file is deleted. Plus the equivalent IMP journey, and a check that a KOC gets `403` on every admin module.
+
+`apps/frames/tests/test_frame_api.py` covers the frame API end to end — 38 tests across job frames, PostDesk frames, cross-type validation, absolute media URLs, permissions, and member access scoping. It was mutation-checked: disabling the serializer validation fails exactly the 6 validation tests, so the suite is not vacuous.
 
 The 13 failures are **pre-existing and unrelated** — `apps/members/tests/test_apis.py` references a `display_name` field that does not exist on `Member` (it's `full_name`). That test file was already stale before this branch; it is unchanged here. The count is identical before and after the frame restructure.
 
@@ -246,7 +332,6 @@ Verified manually beyond the suite:
 
 | Spec row | Item |
 |---|---|
-| 2 | Frame CRUD endpoints for PostDesk (background upload, assignment to KOC/group) |
 | 3 | Reel URL retrieval, MP4 upload fallback, caption text + colour |
 | 4 | 4-layer composite (background → video → overlay → caption), download-then-delete |
 | 5 | Published reel link submission (platform, timestamp, must outlive the video file) |
@@ -259,4 +344,5 @@ Verified manually beyond the suite:
 - **Background compositing.** `tasks.py` currently pads with `color=black` when content doesn't fill the canvas. That pad is where the background layer belongs. Compositing also needs a third ffmpeg input beneath the content, and must handle a missing background *or* missing overlay, since both are nullable.
 - **Frontend**: the editor at `/more/frame-editor/` already has crop, trim, live frame preview, and render→poll→download→mark-downloaded (which is what "delete after download" needs). Missing: caption UI, background layer in the preview stage, reel-URL import, published-link screen — and its job coupling (`task_uuid` / `member_job_uuid` / `job_uuid` threaded through every page) has to be cut.
 - **`PLATFORM_CHOICES`** (`apps/members/choices.py`) has only Instagram and TikTok — **Facebook is missing** and the spec requires it.
+- **No KOC-facing endpoint for assigned frames.** `/frame/postdesk/` is admin-only, and the member frame endpoints are all job-scoped (`/members/{uuid}/jobs/{job}/frames/`). A KOC can render onto a frame they're entitled to, but has no way to *discover* which frames those are. The KOC editor needs something like `/members/{uuid}/frames/` returning the union of individual + group assignments.
 - **`Member.status`** has no `PENDING` state, but the spec requires accounts to start Pending and activate on first successful login.

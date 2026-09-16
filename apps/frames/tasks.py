@@ -133,6 +133,11 @@ def render_content(rendered_content_id):
         return
 
     frame = rendered.frame
+    if not frame.image:
+        rendered.render_status = 3
+        rendered.save()
+        return
+
     is_animated_frame = frame.image.name.lower().endswith(".gif")
     is_video_content = rendered.media_type == 1
 
