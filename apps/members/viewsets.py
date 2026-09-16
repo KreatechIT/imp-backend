@@ -1,5 +1,5 @@
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import Count, Prefetch, Q
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.serializers import ValidationError
@@ -199,6 +199,158 @@ class RoleViewSet(ReadOnlyModelViewSet):
 
     def get_queryset(self):
         return models.Role.objects.filter(archived=None).order_by("name")
+
+
+class UserGroupViewSet(ReadOnlyModelViewSet):
+    serializer_class = serializers_get.UserGroupSerializer
+    permission_classes = [permissions.IsAdmin]
+    pagination_class = StandardPagination
+    lookup_field = "uuid"
+    item_key = "User Group Id"
+
+    def base_queryset(self):
+        active_members = models.Member.objects.filter(
+            archived=None,
+        ).select_related("user", "role").order_by("full_name")
+
+        return (
+            models.UserGroup.objects
+            .annotate(
+                total_members=Count(
+                    "members",
+                    filter=Q(members__archived__isnull=True),
+                    distinct=True,
+                ),
+            )
+            .prefetch_related(Prefetch("members", queryset=active_members))
+        )
+
+    def get_queryset(self):
+        queryset = self.base_queryset().filter(archived=None).order_by("name")
+
+        name = self.request.query_params.get("name")
+        status = self.request.query_params.get("status")
+        if name:
+            queryset = queryset.filter(name__icontains=name)
+        if status:
+            queryset = queryset.filter(status=status)
+        return queryset
+
+    def serialized(self, user_group):
+        instance = self.base_queryset().get(pk=user_group.pk)
+        return serializers_get.UserGroupSerializer(
+            instance, context={"request": self.request},
+        ).data
+
+    def get_serializer_class(self):
+        if self.action == "retrieve":
+            return serializers_get.UserGroupDetailSerializer
+        return serializers_get.UserGroupSerializer
+
+    def get_members(self, member_uuids):
+        members = list(
+            models.Member.objects.filter(uuid__in=member_uuids, archived=None)
+        )
+        found = {str(member.uuid) for member in members}
+        missing = [str(uuid) for uuid in member_uuids if str(uuid) not in found]
+        return members, missing
+
+    @extend_schema(request=serializers_create.UserGroupSerializer)
+    def create(self, request, *args, **kwargs):
+        serializer = serializers_create.UserGroupSerializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except ValidationError as e:
+            return responses.InvalidDataError(details=e.detail).get_response()
+        validated_data = serializer.validated_data
+
+        member_uuids = validated_data.pop("members", [])
+        members, missing = self.get_members(member_uuids)
+        if missing:
+            return responses.MissingItemError(
+                item_key="Member Id", item_id=", ".join(missing),
+            ).get_response()
+
+        try:
+            with transaction.atomic():
+                user_group = models.UserGroup.objects.create(**validated_data)
+                user_group.members.set(members)
+        except IntegrityError:
+            return responses.ExistingDataError(
+                item_key="Name", item_id=validated_data["name"],
+            ).get_response()
+
+        return responses.CreatedSuccessResponse(
+            data=self.serialized(user_group),
+        ).get_response()
+
+    @extend_schema(request=serializers_create.EditUserGroupSerializer)
+    def update(self, request, uuid=None, *args, **kwargs):
+        serializer = serializers_create.EditUserGroupSerializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except ValidationError as e:
+            return responses.InvalidDataError(details=e.detail).get_response()
+        validated_data = serializer.validated_data
+
+        try:
+            user_group = models.UserGroup.objects.get(uuid=uuid)
+        except models.UserGroup.DoesNotExist:
+            return responses.MissingItemError(
+                item_key=self.item_key, item_id=uuid,
+            ).get_response()
+
+        if user_group.is_archived:
+            return responses.ItemAlreadyArchivedError(
+                item_key=self.item_key, item_id=uuid,
+            ).get_response()
+
+        members = None
+        if "members" in validated_data:
+            member_uuids = validated_data.pop("members")
+            members, missing = self.get_members(member_uuids)
+            if missing:
+                return responses.MissingItemError(
+                    item_key="Member Id", item_id=", ".join(missing),
+                ).get_response()
+
+        try:
+            with transaction.atomic():
+                user_group.update(**validated_data)
+                if members is not None:
+                    user_group.members.set(members)
+        except IntegrityError:
+            return responses.ExistingDataError(
+                item_key="Name", item_id=validated_data.get("name"),
+            ).get_response()
+
+        return responses.SuccessResponse(
+            data=self.serialized(user_group),
+        ).get_response()
+
+    @extend_schema(request=serializers_create.EditUserGroupSerializer)
+    def partial_update(self, request, uuid=None, *args, **kwargs):
+        return self.update(request, uuid=uuid, *args, **kwargs)
+
+    @action(detail=True, methods=["patch"])
+    def archive(self, request, uuid=None, *args, **kwargs):
+        try:
+            user_group = models.UserGroup.objects.get(uuid=uuid)
+        except models.UserGroup.DoesNotExist:
+            return responses.MissingItemError(
+                item_key=self.item_key, item_id=uuid,
+            ).get_response()
+
+        if user_group.is_archived:
+            return responses.ItemAlreadyArchivedError(
+                item_key=self.item_key, item_id=uuid,
+            ).get_response()
+
+        user_group.archive()
+
+        return responses.SuccessResponse(
+            data=self.serialized(user_group),
+        ).get_response()
 
 
 class BankDetailViewSet(ReadOnlyModelViewSet):

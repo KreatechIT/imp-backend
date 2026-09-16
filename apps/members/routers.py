@@ -5,10 +5,9 @@ from apps.members import viewsets
 member_router = routers.DefaultRouter()
 member_router.register("", viewsets.MemberViewSet, basename="members")
 
-# SimpleRouter, included ahead of member_router in urls.py: avoids "roles/"
-# being swallowed by MemberViewSet's generic <uuid>/ detail route.
 role_router = routers.SimpleRouter()
 role_router.register("roles", viewsets.RoleViewSet, basename="roles")
+role_router.register("group", viewsets.UserGroupViewSet, basename="user-groups")
 
 # SimpleRouter: DefaultRouter's api root view would shadow /members/
 admin_member_router = routers.SimpleRouter()

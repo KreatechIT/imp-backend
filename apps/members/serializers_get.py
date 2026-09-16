@@ -77,6 +77,47 @@ class RoleSerializer(serializers.ModelSerializer):
         ]
 
 
+class UserGroupMemberSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source="user.username")
+    member_role = serializers.SerializerMethodField()
+
+    def get_member_role(self, obj):
+        return obj.role.name if obj.role else None
+
+    class Meta:
+        model = models.Member
+        fields = [
+            "uuid",
+            "username",
+            "full_name",
+            "phone_number",
+            "date_of_birth",
+            "member_role",
+        ]
+
+
+class UserGroupSerializer(serializers.ModelSerializer):
+    status = serializers.CharField(source="get_status_display")
+    total_members = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = models.UserGroup
+        fields = [
+            "uuid",
+            "name",
+            "status",
+            "total_members",
+            "created",
+        ]
+
+
+class UserGroupDetailSerializer(UserGroupSerializer):
+    members = UserGroupMemberSerializer(many=True, read_only=True)
+
+    class Meta(UserGroupSerializer.Meta):
+        fields = UserGroupSerializer.Meta.fields + ["members"]
+
+
 class MemberSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username")
     last_login = serializers.DateTimeField(source="user.last_login")

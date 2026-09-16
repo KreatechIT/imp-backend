@@ -61,6 +61,30 @@ class EditMemberSerializer(serializers.Serializer):
         return value or None
 
 
+class UserGroupSerializer(serializers.Serializer):
+    name = serializers.CharField(required=True)
+    status = serializers.ChoiceField(
+        choices=choices.USER_GROUP_STATUS_CHOICES, default=1,
+    )
+    members = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        allow_empty=True,
+    )
+
+
+class EditUserGroupSerializer(serializers.Serializer):
+    name = serializers.CharField(required=False)
+    status = serializers.ChoiceField(
+        choices=choices.USER_GROUP_STATUS_CHOICES, required=False,
+    )
+    members = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        allow_empty=True,
+    )
+
+
 class EditProfileSerializer(serializers.Serializer):
     full_name = serializers.CharField(required=False)
     profile_picture = serializers.ImageField(required=False, allow_null=True)

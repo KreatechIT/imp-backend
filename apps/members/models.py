@@ -214,3 +214,40 @@ class LoginAudit(TimeStampedModel):
         indexes = [
             models.Index(fields=["created"]),
         ]
+
+
+class UserGroup(TimeStampedModel):
+    name = models.CharField(
+        verbose_name=_("Name"),
+        max_length=100,
+        unique=True,
+    )
+    members = models.ManyToManyField(
+        Member,
+        verbose_name=_("Members"),
+        blank=True,
+        related_name="user_groups",
+    )
+    status = models.IntegerField(
+        verbose_name=_("Status"),
+        choices=choices.USER_GROUP_STATUS_CHOICES,
+        default=1,
+    )
+    archived = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["created"]),
+            models.Index(fields=["name"]),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    def archive(self):
+        self.archived = timezone.now()
+        self.save()
+
+    @property
+    def is_archived(self):
+        return self.archived is not None
