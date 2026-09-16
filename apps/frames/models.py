@@ -24,15 +24,16 @@ def rendered_content_upload_to(instance, filename):
 
 
 class Frame(TimeStampedModel):
-    job = models.ForeignKey(
-        Job,
-        verbose_name=_("Job"),
-        on_delete=models.CASCADE,
-        related_name="frames",
-    )
     name = models.CharField(
         verbose_name=_("Name"),
         max_length=150,
+    )
+    background = ImageField(
+        verbose_name=_("Background Image"),
+        blank=True,
+        null=True,
+        upload_to=frame_upload_to,
+        validators=[encryption.validate_file_size],
     )
     image = ImageField(
         verbose_name=_("Frame Image"),
@@ -71,7 +72,7 @@ class Frame(TimeStampedModel):
         ]
 
     def __str__(self):
-        return f"{self.job} - {self.name}"
+        return self.name
 
     def archive(self):
         self.archived = timezone.now()
@@ -82,11 +83,93 @@ class Frame(TimeStampedModel):
         return self.archived is not None
 
     @property
+    def job(self):
+        assignment = next(
+            (
+                assignment for assignment in self.assignments.all()
+                if assignment.job_id and assignment.archived is None
+            ),
+            None,
+        )
+        return assignment.job if assignment else None
+
+    @property
     def is_live(self):
         return self.status == 1 and self.archived is None
 
     def accepts(self, media_type):
         return self.media_type == 1 or self.media_type == media_type
+
+
+class FrameAssignment(TimeStampedModel):
+    frame = models.ForeignKey(
+        Frame,
+        verbose_name=_("Frame"),
+        on_delete=models.CASCADE,
+        related_name="assignments",
+    )
+    job = models.ForeignKey(
+        Job,
+        verbose_name=_("Job"),
+        blank=True,
+        null=True,
+        on_delete=models.CASCADE,
+        related_name="frame_assignments",
+    )
+    member = models.ForeignKey(
+        "members.Member",
+        verbose_name=_("Member"),
+        blank=True,
+        null=True,
+        on_delete=models.CASCADE,
+        related_name="frame_assignments",
+    )
+    user_group = models.ForeignKey(
+        "members.UserGroup",
+        verbose_name=_("User Group"),
+        blank=True,
+        null=True,
+        on_delete=models.CASCADE,
+        related_name="frame_assignments",
+    )
+    status = models.IntegerField(
+        verbose_name=_("Status"),
+        choices=choices.FRAME_ASSIGNMENT_STATUS_CHOICES,
+        default=1,
+    )
+    archived = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(job__isnull=False, member__isnull=True, user_group__isnull=True)
+                    | models.Q(job__isnull=True, member__isnull=False, user_group__isnull=True)
+                    | models.Q(job__isnull=True, member__isnull=True, user_group__isnull=False)
+                ),
+                name="frame_assignment_single_target",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["created"]),
+            models.Index(fields=["status"]),
+            models.Index(fields=["frame", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.frame.name} -> {self.job or self.member or self.user_group}"
+
+    def archive(self):
+        self.archived = timezone.now()
+        self.save()
+
+    @property
+    def is_archived(self):
+        return self.archived is not None
+
+    @property
+    def target(self):
+        return self.job or self.member or self.user_group
 
 
 class RenderedContent(TimeStampedModel):

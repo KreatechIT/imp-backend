@@ -21,8 +21,10 @@ class FrameViewSet(ReadOnlyModelViewSet):
 
     def get_queryset(self):
         queryset = models.Frame.objects.filter(
-            job__uuid=self.kwargs.get("job_uuid"), archived=None,
-        ).select_related("job__company")
+            assignments__job__uuid=self.kwargs.get("job_uuid"),
+            assignments__archived=None,
+            archived=None,
+        ).prefetch_related("assignments__job__company").distinct()
 
         media_type = self.request.query_params.get("media_type")
         status = self.request.query_params.get("status")
@@ -39,7 +41,9 @@ class FrameViewSet(ReadOnlyModelViewSet):
 
     def get_frame(self, uuid):
         return models.Frame.objects.filter(
-            uuid=uuid, job__uuid=self.kwargs.get("job_uuid"),
+            uuid=uuid,
+            assignments__job__uuid=self.kwargs.get("job_uuid"),
+            assignments__archived=None,
         ).first()
 
     @extend_schema(request=serializers_create.FrameSerializer)
@@ -58,7 +62,8 @@ class FrameViewSet(ReadOnlyModelViewSet):
 
         validated_data = dict(serializer.validated_data)
         validated_data.pop("job_uuid", None)
-        frame = models.Frame.objects.create(job=job, **validated_data)
+        frame = models.Frame.objects.create(**validated_data)
+        models.FrameAssignment.objects.create(frame=frame, job=job)
 
         data = self.serializer_class(frame, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
@@ -122,13 +127,15 @@ class FrameLibraryViewSet(ModelViewSet):
     def get_queryset(self):
         queryset = models.Frame.objects.filter(
             archived=None,
-        ).select_related("job__company")
+        ).prefetch_related("assignments__job__company").distinct()
 
         job_uuid = self.request.query_params.get("job_uuid")
         media_type = self.request.query_params.get("media_type")
         status = self.request.query_params.get("status")
         if job_uuid:
-            queryset = queryset.filter(job__uuid=job_uuid)
+            queryset = queryset.filter(
+                assignments__job__uuid=job_uuid, assignments__archived=None,
+            )
         if media_type:
             queryset = queryset.filter(media_type__in=[1, media_type])
         if status:
@@ -154,7 +161,8 @@ class FrameLibraryViewSet(ModelViewSet):
                 item_key="Job Id", item_id=job_uuid,
             ).get_response()
 
-        frame = models.Frame.objects.create(job=job, **validated_data)
+        frame = models.Frame.objects.create(**validated_data)
+        models.FrameAssignment.objects.create(frame=frame, job=job)
 
         data = self.serializer_class(frame, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
@@ -186,7 +194,7 @@ class FrameLibraryViewSet(ModelViewSet):
                 return responses.MissingItemError(
                     item_key="Job Id", item_id=job_uuid,
                 ).get_response()
-            validated_data["job"] = job
+            frame.assignments.filter(job__isnull=False).update(job=job)
 
         frame.update(**validated_data)
 
@@ -230,8 +238,10 @@ class FrameByJobViewSet(ReadOnlyModelViewSet):
 
     def get_queryset(self):
         queryset = models.Frame.objects.filter(
-            job__uuid=self.kwargs.get("job_uuid"), archived=None,
-        ).select_related("job__company")
+            assignments__job__uuid=self.kwargs.get("job_uuid"),
+            assignments__archived=None,
+            archived=None,
+        ).prefetch_related("assignments__job__company").distinct()
 
         media_type = self.request.query_params.get("media_type")
         status = self.request.query_params.get("status")
@@ -255,13 +265,14 @@ class MemberFrameViewSet(ReadOnlyModelViewSet):
         # scoped through the member's own job, so a job they do not hold
         # simply yields nothing
         queryset = models.Frame.objects.filter(
-            job__uuid=self.kwargs.get("job_uuid"),
-            job__member_jobs__member__uuid=self.kwargs.get("member_uuid"),
-            job__member_jobs__status=2,
-            job__member_jobs__archived=None,
+            assignments__job__uuid=self.kwargs.get("job_uuid"),
+            assignments__archived=None,
+            assignments__job__member_jobs__member__uuid=self.kwargs.get("member_uuid"),
+            assignments__job__member_jobs__status=2,
+            assignments__job__member_jobs__archived=None,
             status=1,
             archived=None,
-        ).select_related("job__company").distinct()
+        ).prefetch_related("assignments__job__company").distinct()
 
         media_type = self.request.query_params.get("media_type")
         aspect_ratio = self.request.query_params.get("aspect_ratio")
@@ -284,7 +295,8 @@ class RenderedContentViewSet(ReadOnlyModelViewSet):
     def get_queryset(self):
         queryset = (
             models.RenderedContent.objects
-            .select_related("member__user", "frame__job__company")
+            .select_related("member__user", "frame")
+            .prefetch_related("frame__assignments__job__company")
             .order_by("-created")
         )
 
@@ -296,7 +308,10 @@ class RenderedContentViewSet(ReadOnlyModelViewSet):
         if member_uuid:
             queryset = queryset.filter(member__uuid=member_uuid)
         if job_uuid:
-            queryset = queryset.filter(frame__job__uuid=job_uuid)
+            queryset = queryset.filter(
+                frame__assignments__job__uuid=job_uuid,
+                frame__assignments__archived=None,
+            )
         if from_date:
             queryset = queryset.filter(created__date__gte=from_date)
         if to_date:
@@ -338,7 +353,8 @@ class FrameRenderViewSet(ReadOnlyModelViewSet):
                 frame__uuid=self.kwargs.get("frame_uuid"),
                 member__user=self.request.user,
             )
-            .select_related("member__user", "frame__job__company")
+            .select_related("member__user", "frame")
+            .prefetch_related("frame__assignments__job__company")
             .order_by("-created")
         )
 

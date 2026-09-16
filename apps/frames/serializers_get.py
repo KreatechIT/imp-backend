@@ -6,11 +6,23 @@ from apps.frames import models
 class RenderedContentSerializer(serializers.ModelSerializer):
     member_uuid = serializers.UUIDField(source="member.uuid")
     member = serializers.CharField(source="member.full_name")
-    org = serializers.CharField(source="frame.job.company.name")
-    job_uuid = serializers.UUIDField(source="frame.job.uuid")
-    job_title = serializers.CharField(source="frame.job.title")
+    org = serializers.SerializerMethodField()
+    job_uuid = serializers.SerializerMethodField()
+    job_title = serializers.SerializerMethodField()
     frame_uuid = serializers.UUIDField(source="frame.uuid")
     frame_name = serializers.CharField(source="frame.name")
+
+    def get_org(self, obj):
+        job = obj.frame.job
+        return job.company.name if job else None
+
+    def get_job_uuid(self, obj):
+        job = obj.frame.job
+        return job.uuid if job else None
+
+    def get_job_title(self, obj):
+        job = obj.frame.job
+        return job.title if job else None
 
     class Meta:
         model = models.RenderedContent
@@ -39,9 +51,18 @@ class RenderedContentSerializer(serializers.ModelSerializer):
 
 
 class FrameSerializer(serializers.ModelSerializer):
-    job_uuid = serializers.UUIDField(source="job.uuid")
-    job_title = serializers.CharField(source="job.title")
-    org = serializers.CharField(source="job.company.name")
+    job_uuid = serializers.SerializerMethodField()
+    job_title = serializers.SerializerMethodField()
+    org = serializers.SerializerMethodField()
+
+    def get_job_uuid(self, obj):
+        return obj.job.uuid if obj.job else None
+
+    def get_job_title(self, obj):
+        return obj.job.title if obj.job else None
+
+    def get_org(self, obj):
+        return obj.job.company.name if obj.job else None
 
     class Meta:
         model = models.Frame
@@ -51,6 +72,7 @@ class FrameSerializer(serializers.ModelSerializer):
             "job_title",
             "org",
             "name",
+            "background",
             "image",
             "aspect_ratio",
             "media_type",

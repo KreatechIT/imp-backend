@@ -19,6 +19,11 @@ FRAME_STATUS_CHOICES = (
     (2, _("INACTIVE")),
 )
 
+FRAME_ASSIGNMENT_STATUS_CHOICES = (
+    (1, _("ACTIVE")),
+    (2, _("INACTIVE")),
+)
+
 RENDER_STATUS_CHOICES = (
     (1, _("PROCESSING")),
     (2, _("DONE")),

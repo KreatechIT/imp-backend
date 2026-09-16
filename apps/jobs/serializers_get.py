@@ -85,7 +85,9 @@ class MemberJobSerializer(serializers.ModelSerializer):
     has_frames = serializers.SerializerMethodField()
 
     def get_has_frames(self, obj):
-        return obj.job.frames.filter(status=1, archived=None).exists()
+        return obj.job.frame_assignments.filter(
+            archived=None, frame__status=1, frame__archived=None,
+        ).exists()
 
     class Meta:
         model = models.MemberJob
