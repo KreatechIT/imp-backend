@@ -17,6 +17,16 @@ member_router.register(
     viewsets.MemberFrameViewSet,
     basename="member-frames",
 )
+member_router.register(
+    r'(?P<member_uuid>[0-9a-f-]{36})/source-video',
+    viewsets.SourceVideoViewSet,
+    basename="source-video",
+)
+member_router.register(
+    r'(?P<member_uuid>[0-9a-f-]{36})/source-video/(?P<source_video_uuid>[^/.]+)/render',
+    viewsets.PostDeskRenderViewSet,
+    basename="postdesk-render",
+)
 
 # Flat frame-library routes, addressed by frame uuid rather than nested
 # under an org/job path. SimpleRouter: DefaultRouter's api root view
@@ -29,7 +39,7 @@ library_router.register(
     "library", viewsets.FrameLibraryViewSet, basename="frame-library",
 )
 library_router.register(
-    "content", viewsets.RenderedContentViewSet, basename="frame-content",
+    "content", viewsets.MemberContentViewSet, basename="frame-content",
 )
 library_router.register(
     r'(?P<frame_uuid>[^/.]+)/render', viewsets.FrameRenderViewSet, basename="frame-render",

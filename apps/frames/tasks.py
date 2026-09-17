@@ -1,6 +1,7 @@
 import os
 import subprocess
 import tempfile
+from io import BytesIO
 from uuid import uuid4
 
 from celery import shared_task
@@ -12,6 +13,81 @@ STRETCH_TO_FRAME = "scale2ref=w=trunc(iw/2)*2:h=trunc(ih/2)*2[content][frame]"
 
 MAX_CANVAS_LONG_EDGE = 1920
 MAX_CANVAS_SHORT_EDGE = 1080
+
+RENDER_EXPIRY_SECONDS = 24 * 60 * 60
+
+
+@shared_task
+def pull_source_video(source_video_id):
+    from apps.frames.models import SourceVideo
+    from apps.jobs.helper_functions import media_type_for
+    from apps.third_party.providers.meta import MetaAPIError
+    from apps.third_party.services import download_media, resolve_media
+
+    source_video = SourceVideo.objects.select_related("connection").filter(
+        id=source_video_id,
+    ).first()
+    if source_video is None:
+        return
+
+    connection = source_video.connection
+    if connection is None or connection.is_expired:
+        source_video.pull_status = 3
+        source_video.pull_failure_reason = "This connection has expired — reconnect the account and try again."
+        source_video.save()
+        return
+
+    try:
+        media = resolve_media(connection, source_url=source_video.source_url)
+    except MetaAPIError as e:
+        source_video.pull_status = 3
+        source_video.pull_failure_reason = str(e)
+        source_video.save()
+        return
+
+    media_url = media.get("media_url")
+    if not media_url:
+        source_video.pull_status = 3
+        source_video.pull_failure_reason = "Meta didn't return a file for this post (it may be copyright-flagged)."
+        source_video.save()
+        return
+
+    try:
+        response = download_media(media_url)
+    except MetaAPIError as e:
+        source_video.pull_status = 3
+        source_video.pull_failure_reason = str(e)
+        source_video.save()
+        return
+
+    buffer = BytesIO()
+    for chunk in response.iter_content(chunk_size=1024 * 1024):
+        buffer.write(chunk)
+    buffer.seek(0)
+
+    is_video = media.get("media_type") in ("VIDEO", "REELS")
+    filename = f"{media.get('id', uuid4().hex)}{'.mp4' if is_video else '.jpg'}"
+
+    source_video.original_file = File(buffer, name=filename)
+    source_video.media_type = media_type_for(filename)
+    source_video.original_name = filename
+    source_video.pull_status = 2
+    source_video.pull_failure_reason = ""
+    source_video.save()
+
+
+@shared_task
+def expire_rendered_file(rendered_content_id):
+    from apps.frames.models import RenderedContent
+
+    rendered = RenderedContent.objects.filter(
+        id=rendered_content_id, render_status=2,
+    ).first()
+    if rendered is None or not rendered.rendered_file:
+        return
+
+    rendered.rendered_file.delete(save=False)
+    rendered.save()
 
 
 def _capped_canvas(frame_size):
@@ -127,19 +203,20 @@ def render_content(rendered_content_id):
     from apps.frames.models import RenderedContent
 
     rendered = RenderedContent.objects.select_related(
-        "frame", "member__user",
+        "frame", "member__user", "source_video",
     ).filter(id=rendered_content_id).first()
     if rendered is None:
         return
 
     frame = rendered.frame
-    if not frame.image:
+    source_video = rendered.source_video
+    if not frame.image or not source_video.original_file:
         rendered.render_status = 3
         rendered.save()
         return
 
     is_animated_frame = frame.image.name.lower().endswith(".gif")
-    is_video_content = rendered.media_type == 1
+    is_video_content = source_video.media_type == 1
 
     has_trim = (
         is_video_content
@@ -149,9 +226,9 @@ def render_content(rendered_content_id):
     )
 
     with tempfile.TemporaryDirectory() as tmp_dir:
-        content_path = os.path.join(tmp_dir, os.path.basename(rendered.original_file.name))
+        content_path = os.path.join(tmp_dir, os.path.basename(source_video.original_file.name))
         with open(content_path, "wb") as fh:
-            for chunk in rendered.original_file.chunks():
+            for chunk in source_video.original_file.chunks():
                 fh.write(chunk)
 
         frame_path = os.path.join(tmp_dir, os.path.basename(frame.image.name))
@@ -229,6 +306,11 @@ def render_content(rendered_content_id):
             )
         rendered.render_status = 2
         rendered.save()
+
+    if frame.frame_type == 2:
+        expire_rendered_file.apply_async(
+            args=[rendered.id], countdown=RENDER_EXPIRY_SECONDS,
+        )
 
     notifications.notify(
         recipient=rendered.member.user,

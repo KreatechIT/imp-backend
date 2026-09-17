@@ -76,6 +76,28 @@ class RenderRequestSerializer(serializers.Serializer):
     trim_out = serializers.FloatField(required=False, min_value=0)
 
 
+class UploadSourceVideoSerializer(serializers.Serializer):
+    file = serializers.FileField(
+        required=True,
+        validators=[encryption.validate_content_file_size],
+    )
+
+
+class PullSourceVideoSerializer(serializers.Serializer):
+    connection_uuid = serializers.UUIDField(required=True)
+    source_url = serializers.URLField(required=True)
+
+
+class PostDeskRenderRequestSerializer(serializers.Serializer):
+    frame_uuid = serializers.UUIDField(required=True)
+    crop_x = serializers.IntegerField(required=False)
+    crop_y = serializers.IntegerField(required=False)
+    crop_width = serializers.IntegerField(required=False, min_value=1)
+    crop_height = serializers.IntegerField(required=False, min_value=1)
+    trim_in = serializers.FloatField(required=False, min_value=0)
+    trim_out = serializers.FloatField(required=False, min_value=0)
+
+
 class FrameSetupSerializer(serializers.Serializer):
     name = serializers.CharField(required=True)
     background = serializers.ImageField(

@@ -34,3 +34,11 @@ RENDER_STATUS_CHOICES = (
     (2, _("DONE")),
     (3, _("FAILED")),
 )
+
+PULL_STATUS_CHOICES = (
+    (1, _("PROCESSING")),
+    (2, _("DONE")),
+    (3, _("FAILED")),
+)
+
+SOURCE_VIDEO_VISIBILITY_HOURS = 24

@@ -3,14 +3,40 @@ from rest_framework import serializers
 from apps.frames import models
 
 
-class RenderedContentSerializer(serializers.ModelSerializer):
+class SourceVideoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.SourceVideo
+        fields = [
+            "uuid",
+            "original_file",
+            "media_type",
+            "original_name",
+            "pull_status",
+            "pull_failure_reason",
+            "source_url",
+            "created",
+        ]
+
+
+class MemberContentSerializer(serializers.ModelSerializer):
     member_uuid = serializers.UUIDField(source="member.uuid")
-    member = serializers.CharField(source="member.full_name")
+    member_name = serializers.CharField(source="member.full_name")
+    member_phone_number = serializers.CharField(source="member.phone_number")
+    member_role = serializers.SerializerMethodField()
+    frame_uuid = serializers.UUIDField(source="frame.uuid")
+    frame_name = serializers.CharField(source="frame.name")
+    frame_type = serializers.IntegerField(source="frame.frame_type")
     org = serializers.SerializerMethodField()
     job_uuid = serializers.SerializerMethodField()
     job_title = serializers.SerializerMethodField()
-    frame_uuid = serializers.UUIDField(source="frame.uuid")
-    frame_name = serializers.CharField(source="frame.name")
+    source_video_uuid = serializers.UUIDField(source="source_video.uuid")
+    original_file = serializers.FileField(source="source_video.original_file", read_only=True)
+    media_type = serializers.IntegerField(source="source_video.media_type", read_only=True)
+    original_name = serializers.CharField(source="source_video.original_name", read_only=True)
+    source_url = serializers.URLField(source="source_video.source_url", read_only=True)
+
+    def get_member_role(self, obj):
+        return obj.member.role.name if obj.member.role else None
 
     def get_org(self, obj):
         job = obj.frame.job
@@ -28,17 +54,40 @@ class RenderedContentSerializer(serializers.ModelSerializer):
         model = models.RenderedContent
         fields = [
             "uuid",
-            "member",
             "member_uuid",
+            "member_name",
+            "member_phone_number",
+            "member_role",
+            "frame_uuid",
+            "frame_name",
+            "frame_type",
             "org",
             "job_uuid",
             "job_title",
-            "frame_uuid",
-            "frame_name",
+            "source_video_uuid",
             "original_file",
-            "rendered_file",
             "media_type",
             "original_name",
+            "source_url",
+            "rendered_file",
+            "render_status",
+            "created",
+        ]
+
+
+class RenderDetailSerializer(serializers.ModelSerializer):
+    frame_uuid = serializers.UUIDField(source="frame.uuid")
+    frame_name = serializers.CharField(source="frame.name")
+    source_video_uuid = serializers.UUIDField(source="source_video.uuid")
+
+    class Meta:
+        model = models.RenderedContent
+        fields = [
+            "uuid",
+            "frame_uuid",
+            "frame_name",
+            "source_video_uuid",
+            "rendered_file",
             "render_status",
             "crop_x",
             "crop_y",

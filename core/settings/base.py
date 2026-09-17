@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "apps.earnings",
     "apps.frames",
     "apps.notifications",
+    "apps.third_party",
 
     "drf_spectacular",
     "drf_spectacular_sidecar",
@@ -220,5 +221,12 @@ IMAGE_STRUCTURE = config("IMAGE_STRUCTURE", default="http://localhost:8000")
 
 INFLUENCER_API_BASE_URL = config("INFLUENCER_API_BASE_URL", default="")
 INFLUENCER_API_ACCESS_CODE = config("INFLUENCER_API_ACCESS_CODE", default="")
+
+META_APP_ID = config("META_APP_ID", default="")
+META_APP_SECRET = config("META_APP_SECRET", default="")
+META_GRAPH_API_VERSION = config("META_GRAPH_API_VERSION", default="v21.0")
+
+FRONTEND_BASE_URL = config("FRONTEND_BASE_URL", default="http://localhost:3000")
+THIRD_PARTY_CONNECT_RESULT_PATH = config("THIRD_PARTY_CONNECT_RESULT_PATH", default="/koc/profile")
 
 ENVIRONMENT = "local"

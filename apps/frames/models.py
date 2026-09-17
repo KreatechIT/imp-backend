@@ -180,7 +180,64 @@ class FrameAssignment(TimeStampedModel):
         return self.job or self.member or self.user_group
 
 
+class SourceVideo(TimeStampedModel):
+    member = models.ForeignKey(
+        "members.Member",
+        verbose_name=_("Member"),
+        on_delete=models.CASCADE,
+        related_name="source_videos",
+    )
+    connection = models.ForeignKey(
+        "third_party.ThirdPartyConnection",
+        verbose_name=_("Connection"),
+        on_delete=models.SET_NULL,
+        related_name="pulled_videos",
+        blank=True,
+        null=True,
+    )
+    original_file = models.FileField(
+        upload_to=rendered_content_upload_to,
+        validators=[encryption.validate_content_file_size],
+        blank=True,
+        null=True,
+    )
+    media_type = models.IntegerField(
+        verbose_name=_("Media Type"),
+        choices=TASK_FILE_MEDIA_TYPE_CHOICES,
+        blank=True,
+        null=True,
+    )
+    original_name = models.CharField(
+        verbose_name=_("Original Name"),
+        max_length=255,
+        blank=True,
+        null=True,
+    )
+    pull_status = models.IntegerField(
+        verbose_name=_("Pull Status"),
+        choices=choices.PULL_STATUS_CHOICES,
+        default=1,
+    )
+    pull_failure_reason = models.CharField(max_length=500, blank=True, default="")
+    source_url = models.URLField(max_length=500, blank=True, null=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["created"]),
+            models.Index(fields=["member"]),
+        ]
+
+    def __str__(self):
+        return f"{self.member} - {self.original_name}"
+
+
 class RenderedContent(TimeStampedModel):
+    source_video = models.ForeignKey(
+        SourceVideo,
+        verbose_name=_("Source Video"),
+        on_delete=models.CASCADE,
+        related_name="renders",
+    )
     frame = models.ForeignKey(
         Frame,
         verbose_name=_("Frame"),
@@ -192,20 +249,6 @@ class RenderedContent(TimeStampedModel):
         verbose_name=_("Member"),
         on_delete=models.CASCADE,
         related_name="rendered_content",
-    )
-    original_file = models.FileField(
-        upload_to=rendered_content_upload_to,
-        validators=[encryption.validate_content_file_size],
-    )
-    media_type = models.IntegerField(
-        verbose_name=_("Media Type"),
-        choices=TASK_FILE_MEDIA_TYPE_CHOICES,
-    )
-    original_name = models.CharField(
-        verbose_name=_("Original Name"),
-        max_length=255,
-        blank=True,
-        null=True,
     )
     rendered_file = models.FileField(
         upload_to=rendered_content_upload_to,
@@ -229,6 +272,7 @@ class RenderedContent(TimeStampedModel):
             models.Index(fields=["created"]),
             models.Index(fields=["frame"]),
             models.Index(fields=["member"]),
+            models.Index(fields=["source_video"]),
         ]
 
     def __str__(self):
