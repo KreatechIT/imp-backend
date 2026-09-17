@@ -8,6 +8,7 @@ from apps.frames.viewsets.member import (
     FrameByJobViewSet,
     FrameRenderViewSet,
     MemberFrameViewSet,
+    MemberPostDeskFrameViewSet,
     PostDeskRenderViewSet,
     SourceVideoViewSet,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "MemberContentViewSet",
     "FrameByJobViewSet",
     "MemberFrameViewSet",
+    "MemberPostDeskFrameViewSet",
     "SourceVideoViewSet",
     "FrameRenderViewSet",
     "PostDeskRenderViewSet",

@@ -96,6 +96,12 @@ class PostDeskRenderRequestSerializer(serializers.Serializer):
     crop_height = serializers.IntegerField(required=False, min_value=1)
     trim_in = serializers.FloatField(required=False, min_value=0)
     trim_out = serializers.FloatField(required=False, min_value=0)
+    caption_text = serializers.CharField(required=False, allow_blank=True, max_length=200)
+    caption_color = serializers.CharField(required=False, allow_blank=True, max_length=20)
+    caption_background_color = serializers.CharField(required=False, allow_blank=True, max_length=20)
+    caption_font_size = serializers.IntegerField(required=False, min_value=1)
+    caption_x = serializers.IntegerField(required=False)
+    caption_y = serializers.IntegerField(required=False)
 
 
 class FrameSetupSerializer(serializers.Serializer):

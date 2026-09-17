@@ -74,6 +74,30 @@ class MemberFrameViewSet(ReadOnlyModelViewSet):
         return queryset.order_by("ordering", "created")
 
 
+class MemberPostDeskFrameViewSet(ReadOnlyModelViewSet):
+    """The frames a KOC can apply to their own content, no job involved."""
+
+    serializer_class = serializers_get.FrameSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardPagination
+    lookup_field = "uuid"
+    item_key = "Frame Id"
+
+    def get_queryset(self):
+        member = getattr(self.request.user, "member", None)
+        if member is None:
+            return models.Frame.objects.none()
+
+        return models.Frame.objects.filter(
+            assignments__archived=None,
+            status=1,
+            archived=None,
+            frame_type=2,
+        ).filter(
+            Q(assignments__member=member) | Q(assignments__user_group__members=member),
+        ).order_by("ordering", "created").distinct()
+
+
 class SourceVideoViewSet(ReadOnlyModelViewSet):
     serializer_class = serializers_get.SourceVideoSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -356,6 +380,12 @@ class PostDeskRenderViewSet(ReadOnlyModelViewSet):
             crop_height=serializer.validated_data.get("crop_height"),
             trim_in=serializer.validated_data.get("trim_in"),
             trim_out=serializer.validated_data.get("trim_out"),
+            caption_text=serializer.validated_data.get("caption_text", ""),
+            caption_color=serializer.validated_data.get("caption_color", ""),
+            caption_background_color=serializer.validated_data.get("caption_background_color", ""),
+            caption_font_size=serializer.validated_data.get("caption_font_size"),
+            caption_x=serializer.validated_data.get("caption_x"),
+            caption_y=serializer.validated_data.get("caption_y"),
         )
 
         render_content.delay(rendered.id)

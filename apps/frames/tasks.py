@@ -1,11 +1,14 @@
 import os
 import subprocess
 import tempfile
+from datetime import timedelta
 from io import BytesIO
+from pathlib import Path
 from uuid import uuid4
 
 from celery import shared_task
 from django.core.files import File
+from django.utils import timezone
 
 from apps.notifications import helper_functions as notifications
 
@@ -15,6 +18,17 @@ MAX_CANVAS_LONG_EDGE = 1920
 MAX_CANVAS_SHORT_EDGE = 1080
 
 RENDER_EXPIRY_SECONDS = 24 * 60 * 60
+
+BACKGROUND_INSET_RATIO = 0.05
+
+
+def _inset_box(canvas_size):
+    canvas_width, canvas_height = canvas_size
+    offset_x = round(canvas_width * BACKGROUND_INSET_RATIO)
+    offset_y = round(canvas_height * BACKGROUND_INSET_RATIO)
+    box_width = max(2, (canvas_width - 2 * offset_x) // 2 * 2)
+    box_height = max(2, (canvas_height - 2 * offset_y) // 2 * 2)
+    return (box_width, box_height), (offset_x, offset_y)
 
 
 @shared_task
@@ -86,6 +100,9 @@ def expire_rendered_file(rendered_content_id):
     if rendered is None or not rendered.rendered_file:
         return
 
+    if timezone.now() - rendered.modified < timedelta(seconds=RENDER_EXPIRY_SECONDS):
+        return
+
     rendered.rendered_file.delete(save=False)
     rendered.save()
 
@@ -129,6 +146,28 @@ def _probe_size(path):
         return None
 
 
+def _probe_duration(path):
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                path,
+            ],
+            capture_output=True, timeout=30,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        duration = float(result.stdout.decode().strip())
+    except ValueError:
+        return None
+    return duration if duration > 0 else None
+
+
 def _visible_part(rect, source_size):
     x, y, width, height = rect
     source_width, source_height = source_size
@@ -139,9 +178,26 @@ def _visible_part(rect, source_size):
     return left, top, right - left, bottom - top
 
 
-def _content_graph(rendered, content_path, frame_path):
-    frame_size = _probe_size(frame_path)
-    canvas = _capped_canvas(frame_size) if frame_size else None
+def _crop_to_canvas(rect, visible, canvas_width, canvas_height):
+    left, top, visible_width, visible_height = visible
+    x, y, width, height = rect
+    cut = f"crop={visible_width}:{visible_height}:{left}:{top}"
+
+    inner_width = max(1, min(canvas_width, round(canvas_width * visible_width / width)))
+    inner_height = max(1, min(canvas_height, round(canvas_height * visible_height / height)))
+    offset_x = min(max(0, round(canvas_width * (left - x) / width)), canvas_width - inner_width)
+    offset_y = min(max(0, round(canvas_height * (top - y) / height)), canvas_height - inner_height)
+
+    return f"{cut},scale={inner_width}:{inner_height},pad={canvas_width}:{canvas_height}:{offset_x}:{offset_y}:color=black"
+
+
+def _content_graph(rendered, content_path, frame_path, content_box=None):
+    if content_box is not None:
+        canvas = content_box
+        frame_size = content_box
+    else:
+        frame_size = _probe_size(frame_path)
+        canvas = _capped_canvas(frame_size) if frame_size else None
 
     def stretch(filters):
         if canvas:
@@ -178,24 +234,112 @@ def _content_graph(rendered, content_path, frame_path):
     if visible == rect or frame_size is None:
         return stretch([cut])
 
-    x, y, width, height = rect
     canvas_width, canvas_height = canvas or (
         frame_size[0] // 2 * 2, frame_size[1] // 2 * 2,
     )
-
-    inner_width = max(1, min(canvas_width, round(canvas_width * visible_width / width)))
-    inner_height = max(1, min(canvas_height, round(canvas_height * visible_height / height)))
-    offset_x = min(max(0, round(canvas_width * (left - x) / width)), canvas_width - inner_width)
-    offset_y = min(max(0, round(canvas_height * (top - y) / height)), canvas_height - inner_height)
-
-    frame_fit = (
-        f"scale={canvas_width}:{canvas_height}" if canvas else "null"
-    )
+    frame_fit = f"scale={canvas_width}:{canvas_height}" if canvas else "null"
     return (
-        f"[0:v]{cut},scale={inner_width}:{inner_height},"
-        f"pad={canvas_width}:{canvas_height}:{offset_x}:{offset_y}:color=black"
-        f"[content];[1:v]{frame_fit}[frame]"
+        f"[0:v]{_crop_to_canvas(rect, visible, canvas_width, canvas_height)}[content];"
+        f"[1:v]{frame_fit}[frame]"
     )
+
+
+def _content_graph_no_overlay(rendered, content_path, canvas_size):
+    canvas_width, canvas_height = canvas_size
+
+    has_crop = all(
+        v is not None for v in (
+            rendered.crop_x, rendered.crop_y,
+            rendered.crop_width, rendered.crop_height,
+        )
+    )
+    if not has_crop:
+        return f"[0:v]scale={canvas_width}:{canvas_height}[content]"
+
+    rect = (
+        rendered.crop_x, rendered.crop_y,
+        rendered.crop_width, rendered.crop_height,
+    )
+    source_size = _probe_size(content_path)
+    visible = _visible_part(rect, source_size) if source_size else None
+    if visible is None:
+        return f"[0:v]scale={canvas_width}:{canvas_height}[content]"
+
+    if visible == rect:
+        left, top, visible_width, visible_height = visible
+        return f"[0:v]crop={visible_width}:{visible_height}:{left}:{top},scale={canvas_width}:{canvas_height}[content]"
+
+    return f"[0:v]{_crop_to_canvas(rect, visible, canvas_width, canvas_height)}[content]"
+
+
+def _escape_drawtext_path(path):
+    return (
+        path.replace("\\", "\\\\")
+        .replace(":", "\\:")
+        .replace("'", "\\'")
+    )
+
+
+_BUNDLED_FONT = str(Path(__file__).resolve().parent / "fonts" / "Roboto-Regular.ttf")
+
+_FONT_CANDIDATES = (
+    _BUNDLED_FONT,
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans.ttf",
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "C:/Windows/Fonts/arial.ttf",
+)
+
+
+def _find_font_file():
+    for candidate in _FONT_CANDIDATES:
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+
+def _caption_filter(rendered, canvas_size, tmp_dir):
+    if not rendered.caption_text:
+        return None
+
+    font_file = _find_font_file()
+    if font_file is None:
+        return None
+
+    text_path = os.path.join(tmp_dir, f"caption_{uuid4().hex}.txt")
+    with open(text_path, "w", encoding="utf-8") as fh:
+        fh.write(rendered.caption_text)
+
+    canvas_width, canvas_height = canvas_size
+    font_size = rendered.caption_font_size or max(18, canvas_height // 20)
+    text_color = rendered.caption_color or "white"
+    box_color = rendered.caption_background_color
+
+    if rendered.caption_x is not None:
+        x_expr = str(rendered.caption_x)
+    else:
+        x_expr = "(w-text_w)/2"
+
+    if rendered.caption_y is not None:
+        y_expr = str(rendered.caption_y)
+    else:
+        y_expr = "h-text_h-(h*0.06)"
+
+    parts = [
+        f"textfile='{_escape_drawtext_path(text_path.replace(os.sep, '/'))}'",
+        f"fontfile='{_escape_drawtext_path(font_file.replace(os.sep, '/'))}'",
+        "expansion=none",
+        f"fontsize={font_size}",
+        f"fontcolor={text_color}",
+        f"x={x_expr}",
+        f"y={y_expr}",
+    ]
+    if box_color:
+        parts += ["box=1", f"boxcolor={box_color}@0.75", "boxborderw=12"]
+
+    return "drawtext=" + ":".join(parts)
 
 
 @shared_task
@@ -210,12 +354,14 @@ def render_content(rendered_content_id):
 
     frame = rendered.frame
     source_video = rendered.source_video
-    if not frame.image or not source_video.original_file:
+    has_overlay = bool(frame.image)
+    has_background = bool(frame.background)
+    if (not has_overlay and not has_background) or not source_video.original_file:
         rendered.render_status = 3
         rendered.save()
         return
 
-    is_animated_frame = frame.image.name.lower().endswith(".gif")
+    is_animated_frame = has_overlay and frame.image.name.lower().endswith(".gif")
     is_video_content = source_video.media_type == 1
 
     has_trim = (
@@ -231,10 +377,19 @@ def render_content(rendered_content_id):
             for chunk in source_video.original_file.chunks():
                 fh.write(chunk)
 
-        frame_path = os.path.join(tmp_dir, os.path.basename(frame.image.name))
-        with open(frame_path, "wb") as fh:
-            for chunk in frame.image.chunks():
-                fh.write(chunk)
+        frame_path = None
+        if has_overlay:
+            frame_path = os.path.join(tmp_dir, os.path.basename(frame.image.name))
+            with open(frame_path, "wb") as fh:
+                for chunk in frame.image.chunks():
+                    fh.write(chunk)
+
+        background_path = None
+        if has_background:
+            background_path = os.path.join(tmp_dir, os.path.basename(frame.background.name))
+            with open(background_path, "wb") as fh:
+                for chunk in frame.background.chunks():
+                    fh.write(chunk)
 
         if is_video_content:
             out_ext = ".mp4"
@@ -244,49 +399,78 @@ def render_content(rendered_content_id):
             out_ext = ".jpg"
         out_path = os.path.join(tmp_dir, f"{uuid4().hex}{out_ext}")
 
-        scale_to_frame = _content_graph(rendered, content_path, frame_path)
+        reference_path = frame_path or background_path
+        canvas_size = _capped_canvas(_probe_size(reference_path)) or _probe_size(reference_path) or (1080, 1920)
+
+        if has_background:
+            content_box, (offset_x, offset_y) = _inset_box(canvas_size)
+        else:
+            content_box, (offset_x, offset_y) = canvas_size, (0, 0)
+
+        if has_overlay:
+            filter_complex = f"{_content_graph(rendered, content_path, frame_path, content_box)};[content][frame]overlay=0:0:shortest=1[composited]"
+            final_label = "composited"
+        else:
+            filter_complex = _content_graph_no_overlay(rendered, content_path, content_box)
+            final_label = "content"
+
+        if has_background:
+            background_index = 2 if has_overlay else 1
+            filter_complex += (
+                f";[{background_index}:v]scale={canvas_size[0]}:{canvas_size[1]}[bg]"
+                f";[bg][{final_label}]overlay={offset_x}:{offset_y}:shortest=1[layered]"
+            )
+            final_label = "layered"
+
+        caption_filter = _caption_filter(rendered, canvas_size, tmp_dir)
+        if caption_filter:
+            filter_complex += f";[{final_label}]{caption_filter}[captioned]"
+            final_label = "captioned"
+
+        def build_inputs(content_args, background_args=None):
+            cmd = ["ffmpeg", "-y", *content_args]
+            if has_overlay:
+                cmd += ["-ignore_loop", "0"] if is_animated_frame else ["-loop", "1"]
+                cmd += ["-i", frame_path]
+            if has_background:
+                cmd += background_args if background_args is not None else ["-loop", "1"]
+                cmd += ["-i", background_path]
+            return cmd
 
         if is_video_content:
-            cmd = ["ffmpeg", "-y"]
+            content_args = []
             if has_trim:
-                cmd += ["-ss", str(rendered.trim_in), "-t", str(rendered.trim_out - rendered.trim_in)]
-            cmd += ["-i", content_path]
-            if is_animated_frame:
-                cmd += ["-ignore_loop", "0"]
-            else:
-                cmd += ["-loop", "1"]
+                content_args += ["-ss", str(rendered.trim_in), "-t", str(rendered.trim_out - rendered.trim_in)]
+            content_args += ["-i", content_path]
+            cmd = build_inputs(content_args)
             cmd += [
-                "-i", frame_path,
-                "-filter_complex",
-                f"{scale_to_frame};[content][frame]overlay=0:0:shortest=1",
+                "-filter_complex", filter_complex,
+                "-map", f"[{final_label}]",
                 "-c:v", "libx264", "-preset", "medium", "-crf", "26",
                 "-pix_fmt", "yuv420p",
                 out_path,
             ]
+        elif is_animated_frame:
+            frame_duration = _probe_duration(frame_path) or 1.0
+            cmd = build_inputs(
+                ["-loop", "1", "-t", str(frame_duration), "-i", content_path],
+                background_args=["-loop", "1", "-t", str(frame_duration)] if has_background else None,
+            )
+            cmd += [
+                "-filter_complex",
+                f"{filter_complex};[{final_label}]fps=8,scale=480:-1:flags=lanczos,split[a][b]"
+                ";[a]palettegen=stats_mode=diff[pal];[b][pal]paletteuse=dither=bayer",
+                out_path,
+            ]
         else:
-            if is_animated_frame:
-                cmd = [
-                    "ffmpeg", "-y",
-                    "-loop", "1", "-i", content_path,
-                    "-i", frame_path,
-                    "-filter_complex",
-                    f"{scale_to_frame};[content][frame]overlay=0:0:shortest=1[merged];"
-                    "[merged]fps=8,scale=480:-1:flags=lanczos,split[a][b];"
-                    "[a]palettegen=stats_mode=diff[pal];"
-                    "[b][pal]paletteuse=dither=bayer",
-                    out_path,
-                ]
-            else:
-                cmd = [
-                    "ffmpeg", "-y",
-                    "-i", content_path,
-                    "-i", frame_path,
-                    "-filter_complex",
-                    f"{scale_to_frame};[content][frame]overlay=0:0",
-                    "-frames:v", "1",
-                    "-q:v", "3",
-                    out_path,
-                ]
+            cmd = build_inputs(["-i", content_path])
+            cmd += [
+                "-filter_complex", filter_complex,
+                "-map", f"[{final_label}]",
+                "-frames:v", "1",
+                "-q:v", "3",
+                out_path,
+            ]
 
         try:
             result = subprocess.run(cmd, capture_output=True, timeout=300)

@@ -266,6 +266,12 @@ class RenderedContent(TimeStampedModel):
     crop_height = models.PositiveIntegerField(blank=True, null=True)
     trim_in = models.FloatField(blank=True, null=True)
     trim_out = models.FloatField(blank=True, null=True)
+    caption_text = models.CharField(max_length=200, blank=True, default="")
+    caption_color = models.CharField(max_length=20, blank=True, default="")
+    caption_background_color = models.CharField(max_length=20, blank=True, default="")
+    caption_font_size = models.PositiveIntegerField(blank=True, null=True)
+    caption_x = models.IntegerField(blank=True, null=True)
+    caption_y = models.IntegerField(blank=True, null=True)
 
     class Meta:
         indexes = [

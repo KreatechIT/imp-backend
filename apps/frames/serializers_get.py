@@ -71,6 +71,12 @@ class MemberContentSerializer(serializers.ModelSerializer):
             "source_url",
             "rendered_file",
             "render_status",
+            "caption_text",
+            "caption_color",
+            "caption_background_color",
+            "caption_font_size",
+            "caption_x",
+            "caption_y",
             "created",
         ]
 
@@ -95,6 +101,12 @@ class RenderDetailSerializer(serializers.ModelSerializer):
             "crop_height",
             "trim_in",
             "trim_out",
+            "caption_text",
+            "caption_color",
+            "caption_background_color",
+            "caption_font_size",
+            "caption_x",
+            "caption_y",
             "created",
         ]
 

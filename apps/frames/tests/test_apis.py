@@ -201,6 +201,26 @@ class FrameRenderAPITest(BaseAPITestCase):
         assert rendered.render_status == 2
         assert rendered.rendered_file.name.endswith(".gif")
 
+        # Regression: with -ignore_loop 0 on the frame and -loop 1 (infinite)
+        # on the static content, nothing used to reach EOF - overlay's
+        # shortest=1 never fired and palettegen buffered the stream forever,
+        # eventually failing with "Cannot allocate memory" (render_status 3).
+        # Bounding the static inputs to the frame's own natural duration
+        # fixes that. Confirm the output actually preserved the animation
+        # (more than one distinct frame) rather than, say, only "succeeding"
+        # by silently truncating to a single frame.
+        probe = subprocess.run(
+            [
+                "ffprobe", "-v", "error", "-count_frames",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=nb_read_frames",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                rendered.rendered_file.path,
+            ],
+            capture_output=True, check=True,
+        )
+        assert int(probe.stdout.decode().strip()) >= 2
+
     @override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
     def test_render_padded_crop_on_video(self):
         self.authenticate()
@@ -229,3 +249,24 @@ class FrameRenderAPITest(BaseAPITestCase):
             format="multipart",
         )
         assert response.status_code == 400
+
+
+class ProbeDurationTest(BaseAPITestCase):
+    """Unit coverage for the duration probe added to fix the animated-GIF
+    render hang: it must return a real, positive duration for a normal
+    media file and fail closed (None) for anything it can't read."""
+
+    def test_probe_duration_reads_gif_duration(self):
+        from apps.frames.tasks import _probe_duration
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "frame.gif"
+            path.write_bytes(_animated_frame_upload().read())
+            duration = _probe_duration(str(path))
+            assert duration is not None
+            assert 0 < duration < 5
+
+    def test_probe_duration_missing_file_returns_none(self):
+        from apps.frames.tasks import _probe_duration
+
+        assert _probe_duration("/no/such/file.gif") is None

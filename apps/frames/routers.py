@@ -18,6 +18,11 @@ member_router.register(
     basename="member-frames",
 )
 member_router.register(
+    r'(?P<member_uuid>[0-9a-f-]{36})/postdesk-frames',
+    viewsets.MemberPostDeskFrameViewSet,
+    basename="member-postdesk-frames",
+)
+member_router.register(
     r'(?P<member_uuid>[0-9a-f-]{36})/source-video',
     viewsets.SourceVideoViewSet,
     basename="source-video",

@@ -482,6 +482,28 @@ class RenderAuthorizationTest(FrameAPIBaseTest):
         self.authenticate(self.user)
         assert self.render(uuid).status_code == 201
 
+    @override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
+    def test_postdesk_render_survives_eager_expiry_task(self):
+        # frame_type=2 renders schedule expire_rendered_file with a 24h
+        # countdown. Countdown is a broker/worker feature: under eager task
+        # execution (as in this test, and any misconfigured deployment) it
+        # is ignored entirely and the expiry task runs immediately, right
+        # after render_content finishes in the same call chain. The rendered
+        # file must still be there afterwards - expire_rendered_file has to
+        # check real elapsed time rather than trusting it was only invoked
+        # once 24h had actually passed.
+        uuid = self.create_postdesk_frame(
+            members=[str(self.member.uuid)],
+        ).json()["uuid"]
+
+        self.authenticate(self.user)
+        response = self.render(uuid)
+        assert response.status_code == 201, response.content
+
+        rendered = models.RenderedContent.objects.get(uuid=response.json()["uuid"])
+        assert rendered.render_status == 2
+        assert rendered.rendered_file
+
     def test_member_not_in_group_cannot_render_group_frame(self):
         uuid = self.create_postdesk_frame(
             user_groups=[str(self.group.uuid)],
