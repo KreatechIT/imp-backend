@@ -19,17 +19,6 @@ MAX_CANVAS_SHORT_EDGE = 1080
 
 RENDER_EXPIRY_SECONDS = 24 * 60 * 60
 
-BACKGROUND_INSET_RATIO = 0.05
-
-
-def _inset_box(canvas_size):
-    canvas_width, canvas_height = canvas_size
-    offset_x = round(canvas_width * BACKGROUND_INSET_RATIO)
-    offset_y = round(canvas_height * BACKGROUND_INSET_RATIO)
-    box_width = max(2, (canvas_width - 2 * offset_x) // 2 * 2)
-    box_height = max(2, (canvas_height - 2 * offset_y) // 2 * 2)
-    return (box_width, box_height), (offset_x, offset_y)
-
 
 @shared_task
 def pull_source_video(source_video_id):
@@ -178,7 +167,7 @@ def _visible_part(rect, source_size):
     return left, top, right - left, bottom - top
 
 
-def _crop_to_canvas(rect, visible, canvas_width, canvas_height):
+def _crop_to_canvas(rect, visible, canvas_width, canvas_height, pad_color="black"):
     left, top, visible_width, visible_height = visible
     x, y, width, height = rect
     cut = f"crop={visible_width}:{visible_height}:{left}:{top}"
@@ -188,10 +177,13 @@ def _crop_to_canvas(rect, visible, canvas_width, canvas_height):
     offset_x = min(max(0, round(canvas_width * (left - x) / width)), canvas_width - inner_width)
     offset_y = min(max(0, round(canvas_height * (top - y) / height)), canvas_height - inner_height)
 
-    return f"{cut},scale={inner_width}:{inner_height},pad={canvas_width}:{canvas_height}:{offset_x}:{offset_y}:color=black"
+    pad = f"pad={canvas_width}:{canvas_height}:{offset_x}:{offset_y}:color={pad_color}"
+    if pad_color == "black":
+        return f"{cut},scale={inner_width}:{inner_height},{pad}"
+    return f"{cut},scale={inner_width}:{inner_height},format=rgba,{pad}"
 
 
-def _content_graph(rendered, content_path, frame_path, content_box=None):
+def _content_graph(rendered, content_path, frame_path, content_box=None, pad_color="black"):
     if content_box is not None:
         canvas = content_box
         frame_size = content_box
@@ -239,12 +231,12 @@ def _content_graph(rendered, content_path, frame_path, content_box=None):
     )
     frame_fit = f"scale={canvas_width}:{canvas_height}" if canvas else "null"
     return (
-        f"[0:v]{_crop_to_canvas(rect, visible, canvas_width, canvas_height)}[content];"
+        f"[0:v]{_crop_to_canvas(rect, visible, canvas_width, canvas_height, pad_color)}[content];"
         f"[1:v]{frame_fit}[frame]"
     )
 
 
-def _content_graph_no_overlay(rendered, content_path, canvas_size):
+def _content_graph_no_overlay(rendered, content_path, canvas_size, pad_color="black"):
     canvas_width, canvas_height = canvas_size
 
     has_crop = all(
@@ -269,7 +261,7 @@ def _content_graph_no_overlay(rendered, content_path, canvas_size):
         left, top, visible_width, visible_height = visible
         return f"[0:v]crop={visible_width}:{visible_height}:{left}:{top},scale={canvas_width}:{canvas_height}[content]"
 
-    return f"[0:v]{_crop_to_canvas(rect, visible, canvas_width, canvas_height)}[content]"
+    return f"[0:v]{_crop_to_canvas(rect, visible, canvas_width, canvas_height, pad_color)}[content]"
 
 
 def _escape_drawtext_path(path):
@@ -313,17 +305,27 @@ def _caption_filter(rendered, canvas_size, tmp_dir):
         fh.write(rendered.caption_text)
 
     canvas_width, canvas_height = canvas_size
-    font_size = rendered.caption_font_size or max(18, canvas_height // 20)
     text_color = rendered.caption_color or "white"
     box_color = rendered.caption_background_color
 
+    if rendered.caption_font_size and rendered.caption_reference_height:
+        font_size = max(
+            1,
+            round(
+                rendered.caption_font_size
+                * canvas_height / rendered.caption_reference_height
+            ),
+        )
+    else:
+        font_size = rendered.caption_font_size or max(18, canvas_height // 20)
+
     if rendered.caption_x is not None:
-        x_expr = str(rendered.caption_x)
+        x_expr = f"(w*{rendered.caption_x / 100:.6f})-(text_w/2)"
     else:
         x_expr = "(w-text_w)/2"
 
     if rendered.caption_y is not None:
-        y_expr = str(rendered.caption_y)
+        y_expr = f"(h*{rendered.caption_y / 100:.6f})-(text_h/2)"
     else:
         y_expr = "h-text_h-(h*0.06)"
 
@@ -402,25 +404,29 @@ def render_content(rendered_content_id):
         reference_path = frame_path or background_path
         canvas_size = _capped_canvas(_probe_size(reference_path)) or _probe_size(reference_path) or (1080, 1920)
 
-        if has_background:
-            content_box, (offset_x, offset_y) = _inset_box(canvas_size)
-        else:
-            content_box, (offset_x, offset_y) = canvas_size, (0, 0)
+        pad_color = "black@0.0" if has_background else "black"
 
         if has_overlay:
-            filter_complex = f"{_content_graph(rendered, content_path, frame_path, content_box)};[content][frame]overlay=0:0:shortest=1[composited]"
-            final_label = "composited"
+            filter_complex = _content_graph(
+                rendered, content_path, frame_path, canvas_size, pad_color,
+            )
         else:
-            filter_complex = _content_graph_no_overlay(rendered, content_path, content_box)
-            final_label = "content"
+            filter_complex = _content_graph_no_overlay(
+                rendered, content_path, canvas_size, pad_color,
+            )
+        final_label = "content"
 
         if has_background:
             background_index = 2 if has_overlay else 1
             filter_complex += (
                 f";[{background_index}:v]scale={canvas_size[0]}:{canvas_size[1]}[bg]"
-                f";[bg][{final_label}]overlay={offset_x}:{offset_y}:shortest=1[layered]"
+                f";[bg][{final_label}]overlay=0:0:shortest=1[layered]"
             )
             final_label = "layered"
+
+        if has_overlay:
+            filter_complex += f";[{final_label}][frame]overlay=0:0:shortest=1[composited]"
+            final_label = "composited"
 
         caption_filter = _caption_filter(rendered, canvas_size, tmp_dir)
         if caption_filter:

@@ -100,8 +100,9 @@ class PostDeskRenderRequestSerializer(serializers.Serializer):
     caption_color = serializers.CharField(required=False, allow_blank=True, max_length=20)
     caption_background_color = serializers.CharField(required=False, allow_blank=True, max_length=20)
     caption_font_size = serializers.IntegerField(required=False, min_value=1)
-    caption_x = serializers.IntegerField(required=False)
-    caption_y = serializers.IntegerField(required=False)
+    caption_x = serializers.FloatField(required=False, min_value=0, max_value=100)
+    caption_y = serializers.FloatField(required=False, min_value=0, max_value=100)
+    caption_reference_height = serializers.IntegerField(required=False, min_value=1)
 
 
 class FrameSetupSerializer(serializers.Serializer):

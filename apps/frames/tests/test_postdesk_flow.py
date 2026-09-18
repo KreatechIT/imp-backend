@@ -1,7 +1,7 @@
 """New coverage for this session's PostDesk work: SourceVideo upload/pull,
 MemberPostDeskFrameViewSet visibility rules, PostDeskRenderViewSet create
 with every background/overlay combination, caption fields end-to-end, the
-background-inset compositing geometry, and the frame_type=1 vs frame_type=2
+layer-order compositing geometry, and the frame_type=1 vs frame_type=2
 render-lifecycle distinctions (expiry task, downloaded action).
 """
 import io
@@ -16,7 +16,7 @@ from django.utils import timezone
 from PIL import Image, ImageDraw
 
 from apps.frames import models
-from apps.frames.tasks import _caption_filter, _escape_drawtext_path, _find_font_file, _inset_box
+from apps.frames.tasks import _caption_filter, _escape_drawtext_path, _find_font_file
 from apps.members.models import Member, UserGroup
 from apps.third_party.models import ThirdPartyConnection
 from base.base_test_classes import BaseAPITestCase
@@ -34,8 +34,6 @@ def _overlay_upload(name="overlay.png", size=(200, 300)):
 
 
 def _background_upload(name="bg.png", size=(200, 300), color=(10, 200, 10)):
-    # Solid, saturated color distinct from the content fixture so we can
-    # sample pixels and tell background from content unambiguously.
     buf = io.BytesIO()
     Image.new("RGB", size, color).save(buf, format="PNG")
     buf.seek(0)
@@ -82,11 +80,7 @@ class PostDeskBaseTest(BaseAPITestCase):
             "members": [str(self.member.uuid)],
         }
         data.update(extra)
-        # A caller passing background=None / image=None means "omit this
-        # layer", not "send a literal None" - DRF's multipart renderer can't
-        # encode None as a field value at all, so it must be dropped here.
         data = {key: value for key, value in data.items() if value is not None}
-        # admin-only creation endpoint; switch to admin momentarily
         from apps.crmadmin.models import Admin
         from base.models import UserModel
 
@@ -227,9 +221,6 @@ class SourceVideoPullTest(PostDeskBaseTest):
 
     @override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
     def test_pull_task_marks_failed_when_connection_missing_at_task_time(self):
-        # Exercises pull_source_video directly for the "connection vanished
-        # or expired by the time the task runs" branch, since the viewset
-        # already screens for a live connection up front.
         from apps.frames.tasks import pull_source_video
 
         connection = ThirdPartyConnection.objects.create(
@@ -290,7 +281,6 @@ class MemberPostDeskFrameViewSetTest(PostDeskBaseTest):
         assert response.json()["results"] == []
 
     def test_excludes_job_frames_even_if_somehow_assigned(self):
-        # frame_type filter must hold regardless of assignment target.
         from apps.jobs.models import Company, Job, MemberJob
 
         company = Company.objects.create(name="Acme")
@@ -394,9 +384,6 @@ class PostDeskRenderCreateTest(PostDeskBaseTest):
         assert rendered.rendered_file
 
     def test_frame_with_neither_layer_is_rejected_at_creation(self):
-        # Frame creation itself already enforces "at least one of
-        # background/image" (serializers_create.FrameSerializer.validate),
-        # so this can never reach render_content - confirm that gate holds.
         response = self.create_postdesk_frame(background=None, image=None)
         assert response.status_code == 400
         assert models.Frame.objects.filter(frame_type=2).count() == 0
@@ -548,9 +535,6 @@ class DownloadedActionAndExpiryTest(PostDeskBaseTest):
         assert not row.rendered_file
 
     def test_frame_type_1_render_does_not_schedule_expiry(self):
-        # frame_type=1 (Job editor) renders must never be auto-expired -
-        # confirm expire_rendered_file.apply_async is not invoked for them,
-        # while it is for frame_type=2.
         from apps.jobs.models import Company, Job, MemberJob
 
         company = Company.objects.create(name="Acme")
@@ -616,7 +600,7 @@ class DownloadedActionAndExpiryTest(PostDeskBaseTest):
 
         rendered.refresh_from_db()
         assert rendered.render_status == 2
-        assert rendered.rendered_file  # still present: 24h has not passed
+        assert rendered.rendered_file
 
     def test_expire_task_deletes_file_once_actually_old(self):
         frame = models.Frame.objects.create(
@@ -678,7 +662,7 @@ class CaptionFilterTest(BaseAPITestCase):
         rendered = models.RenderedContent(caption_text="Hi")
         with tempfile.TemporaryDirectory() as tmp_dir:
             result = _caption_filter(rendered, (200, 400), tmp_dir)
-            assert "fontsize=20" in result  # max(18, 400 // 20)
+            assert "fontsize=20" in result
 
     def test_explicit_font_size_is_used(self):
         rendered = models.RenderedContent(caption_text="Hi", caption_font_size=40)
@@ -686,12 +670,35 @@ class CaptionFilterTest(BaseAPITestCase):
             result = _caption_filter(rendered, (200, 400), tmp_dir)
             assert "fontsize=40" in result
 
-    def test_explicit_position_overrides_default_centering(self):
+    def test_explicit_position_is_resolved_as_canvas_percentage(self):
         rendered = models.RenderedContent(caption_text="Hi", caption_x=15, caption_y=25)
         with tempfile.TemporaryDirectory() as tmp_dir:
             result = _caption_filter(rendered, (200, 400), tmp_dir)
-            assert "x=15" in result
-            assert "y=25" in result
+            assert "x=(w*0.150000)-(text_w/2)" in result
+            assert "y=(h*0.250000)-(text_h/2)" in result
+
+    def test_position_percentage_is_canvas_size_independent(self):
+        rendered = models.RenderedContent(caption_text="Hi", caption_x=50, caption_y=88)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            small = _caption_filter(rendered, (200, 400), tmp_dir)
+            large = _caption_filter(rendered, (1080, 1920), tmp_dir)
+        for result in (small, large):
+            assert "x=(w*0.500000)-(text_w/2)" in result
+            assert "y=(h*0.880000)-(text_h/2)" in result
+
+    def test_font_size_scales_to_canvas_from_reference_height(self):
+        rendered = models.RenderedContent(
+            caption_text="Hi", caption_font_size=18, caption_reference_height=480,
+        )
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            result = _caption_filter(rendered, (1080, 1920), tmp_dir)
+        assert "fontsize=72" in result
+
+    def test_font_size_unscaled_without_reference_height(self):
+        rendered = models.RenderedContent(caption_text="Hi", caption_font_size=40)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            result = _caption_filter(rendered, (1080, 1920), tmp_dir)
+        assert "fontsize=40" in result
 
     def test_background_color_adds_box(self):
         rendered = models.RenderedContent(caption_text="Hi", caption_background_color="black")
@@ -709,18 +716,12 @@ class CaptionFilterTest(BaseAPITestCase):
     def test_escape_drawtext_path_handles_special_characters(self):
         raw = r"C:/tmp/it's:weird.ttf"
         escaped = _escape_drawtext_path(raw)
-        # Backslash escaping must happen first, or later replacements would
-        # double-escape / corrupt the string. Every colon is escaped,
-        # including the drive letter's.
         assert escaped == r"C\:/tmp/it\'s\:weird.ttf"
 
     def test_escape_drawtext_path_handles_backslash_itself(self):
         assert _escape_drawtext_path("a\\b") == "a\\\\b"
 
     def test_caption_with_colons_quotes_percent_does_not_crash_ffmpeg(self):
-        # End-to-end: a filter string built from adversarial caption text
-        # must still be a syntactically valid ffmpeg filtergraph, now that
-        # the text itself travels through a file instead of being inlined.
         rendered = models.RenderedContent(
             caption_text="""50%: it's "huge"!""", caption_color="white",
         )
@@ -738,36 +739,19 @@ class CaptionFilterTest(BaseAPITestCase):
             assert out_path.exists()
 
 
-class InsetBoxTest(BaseAPITestCase):
-    """Unit coverage for _inset_box (tasks.py)."""
+class LayerCompositionRenderTest(PostDeskBaseTest):
+    """Pixel-level verification of the composition order:
 
-    def test_inset_box_is_five_percent_per_side(self):
-        box, (offset_x, offset_y) = _inset_box((1000, 2000))
-        assert offset_x == 50  # 5% of 1000
-        assert offset_y == 100  # 5% of 2000
-        assert box == (900, 1800)  # 1000 - 2*50, 2000 - 2*100
+        background -> content -> overlay -> caption
 
-    def test_inset_box_dimensions_stay_even(self):
-        # ffmpeg's yuv420p and gif palette paths need even dimensions.
-        box, offset = _inset_box((201, 301))
-        assert box[0] % 2 == 0
-        assert box[1] % 2 == 0
-
-    def test_inset_box_never_collapses_to_zero_on_tiny_canvas(self):
-        box, offset = _inset_box((10, 10))
-        assert box[0] >= 2
-        assert box[1] >= 2
-
-
-class BackgroundInsetRenderTest(PostDeskBaseTest):
-    """Pixel-level verification of the background-inset compositing: with a
-    background present, content must render inset ~5% from the canvas edges
-    so the background is visible as a border; without a background, content
-    must fill the whole canvas exactly as the pre-existing Job editor does.
+    The content fills the whole canvas (it is never inset), the overlay is
+    composited last at full canvas size so its artwork is never shrunk and
+    its transparent regions reveal the content beneath, and the background
+    shows through wherever the content does not reach.
     """
 
     @override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
-    def test_background_present_shows_border_and_centered_content(self):
+    def test_content_fills_canvas_over_background(self):
         bg_color = (10, 200, 10)
         content_color = (30, 130, 220)
         frame = self.create_postdesk_frame(
@@ -798,10 +782,7 @@ class BackgroundInsetRenderTest(PostDeskBaseTest):
                 ["ffmpeg", "-y", "-i", path, "-frames:v", "1", str(frame_png)],
                 capture_output=True, check=True,
             )
-
-            # Corner (well inside the 5% border) should read as background.
             corner = _sample_pixel(frame_png, 2, 2)
-            # Center should read as content.
             center = _sample_pixel(frame_png, width // 2, height // 2)
 
         def _closer_to(pixel, a, b):
@@ -809,21 +790,17 @@ class BackgroundInsetRenderTest(PostDeskBaseTest):
             dist_b = sum((p - c) ** 2 for p, c in zip(pixel, b))
             return dist_a < dist_b
 
-        assert _closer_to(corner, bg_color, content_color), corner
+        assert _closer_to(corner, content_color, bg_color), corner
         assert _closer_to(center, content_color, bg_color), center
 
     @override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
-    def test_no_background_content_fills_full_canvas(self):
-        # This is the "don't touch the Job editor" guarantee: without a
-        # background, content must fill edge-to-edge with no inset, exactly
-        # like the pre-existing frame_type=1 behavior.
+    def test_overlay_composites_above_background(self):
+        bg_color = (10, 200, 10)
         content_color = (30, 130, 220)
-        # A PostDesk frame requires at least one of background/image, so
-        # background=None still leaves the default overlay fixture in play -
-        # its border is only 10px wide with a fully transparent interior, so
-        # sampling well inside it (not right at the edge) still reads as
-        # content, exactly like frame_type=1's existing behavior.
-        frame = self.create_postdesk_frame(background=None).json()
+        frame = self.create_postdesk_frame(
+            image=_overlay_upload(size=(200, 300)),
+            background=_background_upload(color=bg_color, size=(200, 300)),
+        ).json()
         source_video_uuid = self.client.post(
             f"/members/{self.member.uuid}/source-video/upload/",
             data={"file": _photo_upload(color=content_color, size=(400, 600))},
@@ -848,34 +825,81 @@ class BackgroundInsetRenderTest(PostDeskBaseTest):
                 ["ffmpeg", "-y", "-i", path, "-frames:v", "1", str(frame_png)],
                 capture_output=True, check=True,
             )
-            # Just inside the overlay's 10px border, comfortably past it -
-            # this point is in the overlay's transparent cutout either way,
-            # but would also fall inside a background-inset border if the
-            # no-background path wrongly applied one.
+            edge = _sample_pixel(frame_png, 2, height // 2)
+            center = _sample_pixel(frame_png, width // 2, height // 2)
+
+        assert edge[0] > 150 and edge[2] > 60, edge
+        assert abs(center[2] - content_color[2]) < 60, center
+
+    @override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
+    def test_zoomed_out_crop_reveals_background_not_black(self):
+        bg_color = (10, 200, 10)
+        content_color = (30, 130, 220)
+        frame = self.create_postdesk_frame(
+            image=None,
+            background=_background_upload(color=bg_color, size=(200, 300)),
+        ).json()
+        source_video_uuid = self.client.post(
+            f"/members/{self.member.uuid}/source-video/upload/",
+            data={"file": _photo_upload(color=content_color, size=(400, 600))},
+            format="multipart",
+        ).json()["uuid"]
+
+        response = self.client.post(
+            f"/members/{self.member.uuid}/source-video/{source_video_uuid}/render/",
+            data={
+                "frame_uuid": frame["uuid"],
+                "crop_x": -100, "crop_y": -150,
+                "crop_width": 600, "crop_height": 900,
+            },
+            format="json",
+        )
+        assert response.status_code == 201, response.content
+        rendered = models.RenderedContent.objects.get(uuid=response.json()["uuid"])
+        assert rendered.render_status == 2
+
+        path = rendered.rendered_file.path
+        width, height = _probe_size(path)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            frame_png = Path(tmp_dir) / "frame.png"
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", path, "-frames:v", "1", str(frame_png)],
+                capture_output=True, check=True,
+            )
+            margin = _sample_pixel(frame_png, 2, height // 2)
+            center = _sample_pixel(frame_png, width // 2, height // 2)
+
+        assert margin[1] > margin[0] and margin[1] > margin[2], margin
+        assert abs(center[2] - content_color[2]) < 60, center
+
+    @override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
+    def test_no_background_content_fills_full_canvas(self):
+        content_color = (30, 130, 220)
+        frame = self.create_postdesk_frame(background=None).json()
+        source_video_uuid = self.client.post(
+            f"/members/{self.member.uuid}/source-video/upload/",
+            data={"file": _photo_upload(color=content_color, size=(400, 600))},
+            format="multipart",
+        ).json()["uuid"]
+
+        response = self.client.post(
+            f"/members/{self.member.uuid}/source-video/{source_video_uuid}/render/",
+            data={"frame_uuid": frame["uuid"]},
+            format="json",
+        )
+        assert response.status_code == 201, response.content
+        rendered = models.RenderedContent.objects.get(uuid=response.json()["uuid"])
+        assert rendered.render_status == 2
+
+        path = rendered.rendered_file.path
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            frame_png = Path(tmp_dir) / "frame.png"
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", path, "-frames:v", "1", str(frame_png)],
+                capture_output=True, check=True,
+            )
             inside = _sample_pixel(frame_png, 30, 30)
 
-        # Should read as content (through the overlay's transparent cutout),
-        # not a distinct background border color, since there is no
-        # background at all - content fills the full canvas.
         assert abs(inside[2] - content_color[2]) < 40, inside
-
-    def test_job_frame_type_1_render_unaffected_by_inset_logic(self):
-        # frame_type=1 path must never see content_box/offset applied -
-        # canvas_size and content_box collapse to the same value with
-        # offset (0, 0) whenever has_background is False, which is always
-        # true for the Job editor (background is rejected at frame-creation
-        # time for frame_type=1).
-        from apps.frames.tasks import _inset_box
-
-        canvas_size = (200, 300)
-        # Job editor path takes this branch in render_content:
-        # if has_background: content_box, offset = _inset_box(canvas_size)
-        # else: content_box, offset = canvas_size, (0, 0)
-        content_box, offset = canvas_size, (0, 0)
-        assert content_box == canvas_size
-        assert offset == (0, 0)
-        # Sanity: _inset_box (only reachable via has_background) would have
-        # given a strictly smaller box, proving the two paths are distinct.
-        inset_box, inset_offset = _inset_box(canvas_size)
-        assert inset_box != canvas_size
-        assert inset_offset != (0, 0)

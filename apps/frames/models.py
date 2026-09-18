@@ -270,8 +270,9 @@ class RenderedContent(TimeStampedModel):
     caption_color = models.CharField(max_length=20, blank=True, default="")
     caption_background_color = models.CharField(max_length=20, blank=True, default="")
     caption_font_size = models.PositiveIntegerField(blank=True, null=True)
-    caption_x = models.IntegerField(blank=True, null=True)
-    caption_y = models.IntegerField(blank=True, null=True)
+    caption_x = models.FloatField(blank=True, null=True)
+    caption_y = models.FloatField(blank=True, null=True)
+    caption_reference_height = models.PositiveIntegerField(blank=True, null=True)
 
     class Meta:
         indexes = [

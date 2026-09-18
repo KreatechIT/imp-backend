@@ -77,6 +77,7 @@ class MemberContentSerializer(serializers.ModelSerializer):
             "caption_font_size",
             "caption_x",
             "caption_y",
+            "caption_reference_height",
             "created",
         ]
 
@@ -107,6 +108,7 @@ class RenderDetailSerializer(serializers.ModelSerializer):
             "caption_font_size",
             "caption_x",
             "caption_y",
+            "caption_reference_height",
             "created",
         ]
 

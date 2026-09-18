@@ -53,8 +53,6 @@ class MemberFrameViewSet(ReadOnlyModelViewSet):
     item_key = "Frame Id"
 
     def get_queryset(self):
-        # scoped through the member's own job, so a job they do not hold
-        # simply yields nothing
         queryset = models.Frame.objects.filter(
             assignments__job__uuid=self.kwargs.get("job_uuid"),
             assignments__archived=None,
@@ -415,6 +413,7 @@ class PostDeskRenderViewSet(ReadOnlyModelViewSet):
             caption_font_size=serializer.validated_data.get("caption_font_size"),
             caption_x=serializer.validated_data.get("caption_x"),
             caption_y=serializer.validated_data.get("caption_y"),
+            caption_reference_height=serializer.validated_data.get("caption_reference_height"),
         )
 
         render_content.delay(rendered.id)
