@@ -1,3 +1,4 @@
+from django.db.models import Q
 from rest_framework.viewsets import ReadOnlyModelViewSet
 
 from apps.koc import models, serializers_create, serializers_get
@@ -29,6 +30,14 @@ class AdminSubmissionViewSet(ReadOnlyModelViewSet):
 
         if filters.get("member_uuid"):
             queryset = queryset.filter(member__uuid=filters["member_uuid"])
+        if filters.get("search"):
+            term = filters["search"]
+            queryset = queryset.filter(
+                Q(member__full_name__icontains=term)
+                | Q(member__user__username__icontains=term)
+                | Q(member__phone_number__icontains=term)
+                | Q(published_url__icontains=term)
+            )
         if filters.get("from_date"):
             queryset = queryset.filter(created__date__gte=filters["from_date"])
         if filters.get("to_date"):

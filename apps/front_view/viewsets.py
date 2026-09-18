@@ -302,6 +302,19 @@ class AuditLogViewSet(ReadOnlyModelViewSet):
             queryset = queryset.filter(actor__member__uuid=member_uuid)
         if filters.get("action"):
             queryset = queryset.filter(action__icontains=filters["action"])
+        if filters.get("search"):
+            # One box over everything the table actually shows, so a search
+            # matches the same text the admin is reading. target_label is
+            # excluded on purpose: it comes from each target's __str__ and
+            # is resolved per page in Python, so it cannot be reached from
+            # the database without walking every generic relation.
+            term = filters["search"]
+            queryset = queryset.filter(
+                Q(actor__member__full_name__icontains=term)
+                | Q(actor__username__icontains=term)
+                | Q(action__icontains=term)
+                | Q(detail__icontains=term)
+            )
         if filters.get("from_date"):
             queryset = queryset.filter(created__date__gte=filters["from_date"])
         if filters.get("to_date"):

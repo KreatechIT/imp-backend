@@ -69,5 +69,6 @@ class EditTermsAndConditionsSerializer(serializers.Serializer):
 class AuditLogFilterSerializer(serializers.Serializer):
     member_uuid = serializers.UUIDField(required=False)
     action = serializers.CharField(required=False)
+    search = serializers.CharField(required=False)
     from_date = serializers.DateField(required=False)
     to_date = serializers.DateField(required=False)

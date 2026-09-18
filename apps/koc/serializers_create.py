@@ -15,6 +15,7 @@ class SubmissionCreateSerializer(serializers.Serializer):
 
 class SubmissionFilterSerializer(serializers.Serializer):
     member_uuid = serializers.UUIDField(required=False)
+    search = serializers.CharField(required=False)
     from_date = serializers.DateField(required=False)
     to_date = serializers.DateField(required=False)
     platform = serializers.ChoiceField(choices=PROVIDER_CHOICES, required=False)
