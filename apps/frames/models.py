@@ -273,6 +273,9 @@ class RenderedContent(TimeStampedModel):
     caption_x = models.FloatField(blank=True, null=True)
     caption_y = models.FloatField(blank=True, null=True)
     caption_reference_height = models.PositiveIntegerField(blank=True, null=True)
+    overlay_x = models.FloatField(blank=True, null=True)
+    overlay_y = models.FloatField(blank=True, null=True)
+    overlay_zoom = models.FloatField(blank=True, null=True)
 
     class Meta:
         indexes = [

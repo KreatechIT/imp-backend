@@ -414,6 +414,9 @@ class PostDeskRenderViewSet(ReadOnlyModelViewSet):
             caption_x=serializer.validated_data.get("caption_x"),
             caption_y=serializer.validated_data.get("caption_y"),
             caption_reference_height=serializer.validated_data.get("caption_reference_height"),
+            overlay_x=serializer.validated_data.get("overlay_x"),
+            overlay_y=serializer.validated_data.get("overlay_y"),
+            overlay_zoom=serializer.validated_data.get("overlay_zoom"),
         )
 
         render_content.delay(rendered.id)

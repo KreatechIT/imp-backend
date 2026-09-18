@@ -103,6 +103,9 @@ class PostDeskRenderRequestSerializer(serializers.Serializer):
     caption_x = serializers.FloatField(required=False, min_value=0, max_value=100)
     caption_y = serializers.FloatField(required=False, min_value=0, max_value=100)
     caption_reference_height = serializers.IntegerField(required=False, min_value=1)
+    overlay_x = serializers.FloatField(required=False, min_value=-100, max_value=100)
+    overlay_y = serializers.FloatField(required=False, min_value=-100, max_value=100)
+    overlay_zoom = serializers.FloatField(required=False, min_value=0.1, max_value=3)
 
 
 class FrameSetupSerializer(serializers.Serializer):

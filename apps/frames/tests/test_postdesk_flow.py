@@ -903,3 +903,149 @@ class LayerCompositionRenderTest(PostDeskBaseTest):
             inside = _sample_pixel(frame_png, 30, 30)
 
         assert abs(inside[2] - content_color[2]) < 40, inside
+
+
+class OverlayTransformTest(BaseAPITestCase):
+    def test_identity_when_untransformed(self):
+        from apps.frames.tasks import _overlay_is_transformed, _overlay_transform
+
+        rendered = models.RenderedContent()
+        assert _overlay_is_transformed(rendered) is False
+
+        (w, h), (x, y) = _overlay_transform(rendered, (200, 300))
+        assert (w, h) == (200, 300)
+        assert (x, y) == (0, 0)
+
+    def test_zoom_scales_from_the_centre(self):
+        from apps.frames.tasks import _overlay_transform
+
+        rendered = models.RenderedContent(overlay_zoom=0.5)
+        (w, h), (x, y) = _overlay_transform(rendered, (200, 300))
+        assert (w, h) == (100, 150)
+        assert (x, y) == (50, 75)
+
+    def test_offset_is_a_canvas_percentage(self):
+        from apps.frames.tasks import _overlay_transform
+
+        rendered = models.RenderedContent(overlay_x=25, overlay_y=10)
+        (w, h), (x, y) = _overlay_transform(rendered, (200, 300))
+        assert (w, h) == (200, 300)
+        assert (x, y) == (50, 30)
+
+    def test_dimensions_stay_even(self):
+        from apps.frames.tasks import _overlay_transform
+
+        rendered = models.RenderedContent(overlay_zoom=0.337)
+        (w, h), _ = _overlay_transform(rendered, (201, 301))
+        assert w % 2 == 0
+        assert h % 2 == 0
+
+    def test_zero_or_missing_zoom_falls_back_to_identity_scale(self):
+        from apps.frames.tasks import _overlay_transform
+
+        for zoom in (None, 0):
+            rendered = models.RenderedContent(overlay_zoom=zoom)
+            (w, h), _ = _overlay_transform(rendered, (200, 300))
+            assert (w, h) == (200, 300)
+
+
+class OverlayTransformRenderTest(PostDeskBaseTest):
+    @override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
+    def test_zoomed_out_overlay_shrinks_toward_the_centre(self):
+        content_color = (30, 130, 220)
+        frame = self.create_postdesk_frame(
+            image=_overlay_upload(size=(200, 300)),
+            background=_background_upload(color=(10, 200, 10), size=(200, 300)),
+        ).json()
+        source_video_uuid = self.client.post(
+            f"/members/{self.member.uuid}/source-video/upload/",
+            data={"file": _photo_upload(color=content_color, size=(400, 600))},
+            format="multipart",
+        ).json()["uuid"]
+
+        response = self.client.post(
+            f"/members/{self.member.uuid}/source-video/{source_video_uuid}/render/",
+            data={"frame_uuid": frame["uuid"], "overlay_zoom": 0.5},
+            format="json",
+        )
+        assert response.status_code == 201, response.content
+        rendered = models.RenderedContent.objects.get(uuid=response.json()["uuid"])
+        assert rendered.render_status == 2
+
+        path = rendered.rendered_file.path
+        width, height = _probe_size(path)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            frame_png = Path(tmp_dir) / "frame.png"
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", path, "-frames:v", "1", str(frame_png)],
+                capture_output=True, check=True,
+            )
+            edge = _sample_pixel(frame_png, 2, height // 2)
+
+        assert not (edge[0] > 150 and edge[2] > 60), (
+            "overlay border must have moved inward at 0.5x zoom", edge,
+        )
+
+    @override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
+    def test_untransformed_overlay_still_spans_the_canvas(self):
+        frame = self.create_postdesk_frame(
+            image=_overlay_upload(size=(200, 300)),
+            background=_background_upload(color=(10, 200, 10), size=(200, 300)),
+        ).json()
+        source_video_uuid = self.client.post(
+            f"/members/{self.member.uuid}/source-video/upload/",
+            data={"file": _photo_upload(color=(30, 130, 220), size=(400, 600))},
+            format="multipart",
+        ).json()["uuid"]
+
+        response = self.client.post(
+            f"/members/{self.member.uuid}/source-video/{source_video_uuid}/render/",
+            data={"frame_uuid": frame["uuid"]},
+            format="json",
+        )
+        assert response.status_code == 201, response.content
+        rendered = models.RenderedContent.objects.get(uuid=response.json()["uuid"])
+        assert rendered.render_status == 2
+
+        path = rendered.rendered_file.path
+        width, height = _probe_size(path)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            frame_png = Path(tmp_dir) / "frame.png"
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", path, "-frames:v", "1", str(frame_png)],
+                capture_output=True, check=True,
+            )
+            edge = _sample_pixel(frame_png, 2, height // 2)
+
+        assert edge[0] > 150 and edge[2] > 60, edge
+
+
+class CanvasSizeTest(PostDeskBaseTest):
+    @override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
+    def test_background_defines_the_canvas_not_the_overlay(self):
+        # The background is the canvas. A differently shaped overlay must be
+        # scaled onto it, never the other way round.
+        frame = self.create_postdesk_frame(
+            image=_overlay_upload(size=(500, 500)),
+            background=_background_upload(color=(10, 200, 10), size=(200, 400)),
+        ).json()
+        source_video_uuid = self.client.post(
+            f"/members/{self.member.uuid}/source-video/upload/",
+            data={"file": _photo_upload(color=(30, 130, 220), size=(400, 600))},
+            format="multipart",
+        ).json()["uuid"]
+
+        response = self.client.post(
+            f"/members/{self.member.uuid}/source-video/{source_video_uuid}/render/",
+            data={"frame_uuid": frame["uuid"]},
+            format="json",
+        )
+        assert response.status_code == 201, response.content
+        rendered = models.RenderedContent.objects.get(uuid=response.json()["uuid"])
+        assert rendered.render_status == 2
+
+        width, height = _probe_size(rendered.rendered_file.path)
+        assert (width, height) == (200, 400), (
+            "canvas must come from the background (200x400), not the "
+            f"500x500 overlay; got {width}x{height}"
+        )

@@ -183,6 +183,33 @@ def _crop_to_canvas(rect, visible, canvas_width, canvas_height, pad_color="black
     return f"{cut},scale={inner_width}:{inner_height},format=rgba,{pad}"
 
 
+def _overlay_transform(rendered, canvas_size):
+    canvas_width, canvas_height = canvas_size
+
+    zoom = rendered.overlay_zoom
+    if zoom is None or zoom <= 0:
+        zoom = 1.0
+
+    scaled_width = max(2, round(canvas_width * zoom) // 2 * 2)
+    scaled_height = max(2, round(canvas_height * zoom) // 2 * 2)
+
+    offset_x = round(canvas_width * (rendered.overlay_x or 0.0) / 100)
+    offset_y = round(canvas_height * (rendered.overlay_y or 0.0) / 100)
+
+    centred_x = round((canvas_width - scaled_width) / 2) + offset_x
+    centred_y = round((canvas_height - scaled_height) / 2) + offset_y
+
+    return (scaled_width, scaled_height), (centred_x, centred_y)
+
+
+def _overlay_is_transformed(rendered):
+    return (
+        (rendered.overlay_zoom is not None and rendered.overlay_zoom != 1.0)
+        or bool(rendered.overlay_x)
+        or bool(rendered.overlay_y)
+    )
+
+
 def _content_graph(rendered, content_path, frame_path, content_box=None, pad_color="black"):
     if content_box is not None:
         canvas = content_box
@@ -401,7 +428,7 @@ def render_content(rendered_content_id):
             out_ext = ".jpg"
         out_path = os.path.join(tmp_dir, f"{uuid4().hex}{out_ext}")
 
-        reference_path = frame_path or background_path
+        reference_path = background_path or frame_path
         canvas_size = _capped_canvas(_probe_size(reference_path)) or _probe_size(reference_path) or (1080, 1920)
 
         pad_color = "black@0.0" if has_background else "black"
@@ -425,7 +452,19 @@ def render_content(rendered_content_id):
             final_label = "layered"
 
         if has_overlay:
-            filter_complex += f";[{final_label}][frame]overlay=0:0:shortest=1[composited]"
+            if _overlay_is_transformed(rendered):
+                (frame_w, frame_h), (frame_x, frame_y) = _overlay_transform(
+                    rendered, canvas_size,
+                )
+                filter_complex += (
+                    f";[frame]scale={frame_w}:{frame_h}[frame_fit]"
+                    f";[{final_label}][frame_fit]"
+                    f"overlay={frame_x}:{frame_y}:shortest=1[composited]"
+                )
+            else:
+                filter_complex += (
+                    f";[{final_label}][frame]overlay=0:0:shortest=1[composited]"
+                )
             final_label = "composited"
 
         caption_filter = _caption_filter(rendered, canvas_size, tmp_dir)

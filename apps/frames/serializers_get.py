@@ -78,6 +78,9 @@ class MemberContentSerializer(serializers.ModelSerializer):
             "caption_x",
             "caption_y",
             "caption_reference_height",
+            "overlay_x",
+            "overlay_y",
+            "overlay_zoom",
             "created",
         ]
 
@@ -109,6 +112,9 @@ class RenderDetailSerializer(serializers.ModelSerializer):
             "caption_x",
             "caption_y",
             "caption_reference_height",
+            "overlay_x",
+            "overlay_y",
+            "overlay_zoom",
             "created",
         ]
 
