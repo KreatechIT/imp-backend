@@ -17,6 +17,7 @@ from apps.jobs import (
 from apps.members.models import Member
 from apps.notifications import helper_functions as notifications
 from base import responses
+from base.utils import log_action
 from core import permissions
 from core.pagination import StandardPagination
 
@@ -245,6 +246,13 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
             notification_type=3,
             title="New submission",
             message=str(task.requirement),
+        )
+
+        log_action(
+            actor=request.user,
+            action="member_task.submitted",
+            target=task,
+            detail=f"{task.member_job.member} submitted {task.requirement}",
         )
 
         data = self.serializer_class(task, context={"request": self.request}).data

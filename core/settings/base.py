@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "apps.frames",
     "apps.notifications",
     "apps.third_party",
+    "apps.koc",
 
     "drf_spectacular",
     "drf_spectacular_sidecar",

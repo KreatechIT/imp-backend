@@ -12,6 +12,7 @@ from apps.frames.tasks import pull_source_video, render_content
 from apps.jobs.helper_functions import media_type_for
 from apps.third_party.models import ThirdPartyConnection
 from base import responses
+from base.utils import log_action
 from core import permissions
 from core.pagination import StandardPagination
 
@@ -153,6 +154,13 @@ class SourceVideoViewSet(ReadOnlyModelViewSet):
             pull_status=2,
         )
 
+        log_action(
+            actor=request.user,
+            action="source_video.uploaded",
+            target=source_video,
+            detail=f"{member} uploaded video {source_video.original_name}",
+        )
+
         data = self.serializer_class(source_video, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
 
@@ -192,6 +200,13 @@ class SourceVideoViewSet(ReadOnlyModelViewSet):
         )
 
         pull_source_video.delay(source_video.id)
+
+        log_action(
+            actor=request.user,
+            action="source_video.pull_requested",
+            target=source_video,
+            detail=f"{member} requested a video pull from {connection}",
+        )
 
         data = self.serializer_class(source_video, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
@@ -288,6 +303,13 @@ class FrameRenderViewSet(ReadOnlyModelViewSet):
 
         render_content.delay(rendered.id)
 
+        log_action(
+            actor=request.user,
+            action="rendered_content.generated",
+            target=rendered,
+            detail=f"{member} generated a render for frame {frame}",
+        )
+
         data = self.serializer_class(rendered, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
 
@@ -303,6 +325,13 @@ class FrameRenderViewSet(ReadOnlyModelViewSet):
             rendered.rendered_file.delete(save=False)
             rendered.rendered_file = None
             rendered.save()
+
+        log_action(
+            actor=request.user,
+            action="rendered_content.downloaded",
+            target=rendered,
+            detail=f"{rendered.member} downloaded render for frame {rendered.frame}",
+        )
 
         data = self.serializer_class(rendered, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
@@ -390,6 +419,13 @@ class PostDeskRenderViewSet(ReadOnlyModelViewSet):
 
         render_content.delay(rendered.id)
 
+        log_action(
+            actor=request.user,
+            action="rendered_content.generated",
+            target=rendered,
+            detail=f"{member} generated a PostDesk render for frame {frame}",
+        )
+
         data = self.serializer_class(rendered, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()
 
@@ -405,6 +441,13 @@ class PostDeskRenderViewSet(ReadOnlyModelViewSet):
             rendered.rendered_file.delete(save=False)
             rendered.rendered_file = None
             rendered.save()
+
+        log_action(
+            actor=request.user,
+            action="rendered_content.downloaded",
+            target=rendered,
+            detail=f"{rendered.member} downloaded PostDesk render for frame {rendered.frame}",
+        )
 
         data = self.serializer_class(rendered, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()

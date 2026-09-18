@@ -8,6 +8,7 @@ from rest_framework.viewsets import ReadOnlyModelViewSet
 from apps.members import models, serializers_create, serializers_get
 from base import responses
 from base.models import UserModel
+from base.utils import log_action
 from core import permissions
 from core.pagination import StandardPagination
 
@@ -167,6 +168,13 @@ class MemberViewSet(ReadOnlyModelViewSet):
         user = member.user
         user.set_password(validated_data["password"])
         user.save()
+
+        log_action(
+            actor=request.user,
+            action="member.password_reset",
+            target=member,
+            detail=f"Password reset for {member}",
+        )
 
         data = serializers_get.MemberSerializer(member, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
