@@ -10,9 +10,16 @@ class SubmissionSerializer(serializers.ModelSerializer):
             "uuid",
             "content_file",
             "media_type",
+            "platform",
             "published_url",
             "created",
         ]
+
+
+class MemberKpiSerializer(serializers.Serializer):
+    assigned_frames = serializers.IntegerField()
+    total_submissions = serializers.IntegerField()
+    connected_accounts = serializers.IntegerField()
 
 
 class AdminSubmissionSerializer(serializers.ModelSerializer):
@@ -29,6 +36,7 @@ class AdminSubmissionSerializer(serializers.ModelSerializer):
             "member_phone_number",
             "content_file",
             "media_type",
+            "platform",
             "published_url",
             "created",
         ]

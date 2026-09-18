@@ -25,6 +25,10 @@ class DashboardKpiSerializer(serializers.Serializer):
     active_campaigns = serializers.IntegerField()
     pending_submissions = serializers.IntegerField()
     approved_submissions = serializers.IntegerField()
+    total_koc_submissions = serializers.IntegerField()
+    koc_submissions_in_range = serializers.IntegerField()
+    postdesk_frame_assignments = serializers.IntegerField()
+    connected_accounts = serializers.IntegerField()
 
 
 class ActivityLogSerializer(serializers.ModelSerializer):

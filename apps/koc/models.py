@@ -5,6 +5,7 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 from apps.jobs.choices import TASK_FILE_MEDIA_TYPE_CHOICES
+from apps.third_party.choices import PROVIDER_CHOICES
 from base.models import TimeStampedModel
 from core import encryption
 
@@ -29,6 +30,10 @@ class Submission(TimeStampedModel):
     media_type = models.IntegerField(
         verbose_name=_("Media Type"),
         choices=TASK_FILE_MEDIA_TYPE_CHOICES,
+    )
+    platform = models.IntegerField(
+        verbose_name=_("Platform"),
+        choices=PROVIDER_CHOICES,
     )
     published_url = models.URLField(
         verbose_name=_("Published Reel Link"),

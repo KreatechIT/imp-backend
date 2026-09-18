@@ -1,6 +1,18 @@
+import io
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+
 from apps.crmadmin import models
+from apps.frames.models import Frame, FrameAssignment
+from apps.koc.models import Submission
+from apps.members.models import Member
+from apps.third_party.models import ThirdPartyConnection
 from base.base_test_classes import BaseAPITestCase
 from base.models import UserModel
+
+
+def _content_upload():
+    return SimpleUploadedFile("post.jpg", io.BytesIO(b"fake-bytes").read(), content_type="image/jpeg")
 
 
 class AdminAPITest(BaseAPITestCase):
@@ -86,6 +98,40 @@ class AdminAPITest(BaseAPITestCase):
 
         self.user.refresh_from_db()
         assert self.user.check_password("Rotated123")
+
+
+class DashboardKpiAPITest(BaseAPITestCase):
+    def setUp(self):
+        super().setUp()
+        self.admin = models.Admin.objects.create(user=self.user, full_name="Base Admin")
+
+        self.member = Member.objects.create(user=self.user, full_name="Koc One")
+        frame = Frame.objects.create(name="PD Frame", frame_type=2)
+        FrameAssignment.objects.create(frame=frame, member=self.member)
+        Submission.objects.create(
+            member=self.member, content_file=_content_upload(), media_type=2, platform=1,
+            published_url="https://instagram.com/reel/mine",
+        )
+        ThirdPartyConnection.objects.create(
+            member=self.member, provider=1, account_id="123",
+            access_token_encrypted="x",
+        )
+        self.authenticate()
+
+    def test_kpi_includes_postdesk_tiles(self):
+        response = self.client.get("/admins/dashboard/kpi/", {
+            "from_date": "2020-01-01", "to_date": "2030-01-01",
+        })
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total_koc_submissions"] == 1
+        assert data["koc_submissions_in_range"] == 1
+        assert data["postdesk_frame_assignments"] == 1
+        assert data["connected_accounts"] == 1
+
+    def test_kpi_requires_date_range(self):
+        response = self.client.get("/admins/dashboard/kpi/")
+        assert response.status_code == 400
 
     def test_archive(self):
         self.authenticate()

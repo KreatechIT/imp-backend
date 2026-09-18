@@ -5,8 +5,11 @@ from rest_framework.generics import GenericAPIView
 from rest_framework.serializers import ValidationError
 
 from apps.crmadmin import serializers_create, serializers_get
+from apps.frames.models import FrameAssignment
 from apps.jobs.models import Job, MemberTask
+from apps.koc.models import Submission
 from apps.members.models import Member
+from apps.third_party.models import ThirdPartyConnection
 from base import responses
 from core import permissions
 
@@ -41,6 +44,14 @@ class DashboardKpiView(GenericAPIView):
                 reviewed_at__lt=end_datetime,
                 is_approved=True,
             ).count(),
+            "total_koc_submissions": Submission.objects.count(),
+            "koc_submissions_in_range": Submission.objects.filter(
+                created__gte=start_datetime, created__lt=end_datetime,
+            ).count(),
+            "postdesk_frame_assignments": FrameAssignment.objects.filter(
+                archived=None, frame__frame_type=2, frame__archived=None,
+            ).count(),
+            "connected_accounts": ThirdPartyConnection.objects.filter(archived=None).count(),
         }
 
         data = self.get_serializer(data).data

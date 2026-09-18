@@ -17,4 +17,5 @@ NOTIFICATION_TYPE_CHOICES = (
     (9, _("RESULT_PENDING")),
     (10, _("RESULT_COMPLETED")),
     (11, _("KOC_SUBMISSION")),
+    (12, _("FRAME_ASSIGNED")),
 )

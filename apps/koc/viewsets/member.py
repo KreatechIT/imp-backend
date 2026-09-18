@@ -60,6 +60,7 @@ class MemberSubmissionViewSet(CreateModelMixin, ListModelMixin, RetrieveModelMix
             member=member,
             content_file=upload,
             media_type=media_type_for(upload.name),
+            platform=validated["platform"],
             published_url=validated["published_url"],
         )
 

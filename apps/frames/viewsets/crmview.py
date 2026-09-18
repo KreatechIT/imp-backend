@@ -8,6 +8,7 @@ from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 from apps.frames import models, serializers_create, serializers_get
 from apps.jobs.models import Job
 from apps.members.models import Member, UserGroup
+from apps.notifications import helper_functions as notifications
 from base import responses
 from core import permissions
 from core.pagination import StandardPagination
@@ -170,6 +171,19 @@ class FrameLibraryViewSet(ModelViewSet):
             [models.FrameAssignment(frame=frame, member=m) for m in members]
             + [models.FrameAssignment(frame=frame, user_group=g) for g in groups]
         )
+
+        notified_members = set(members)
+        for group in groups:
+            notified_members.update(group.members.all())
+
+        for member in notified_members:
+            notifications.notify(
+                recipient=member.user,
+                role=2,
+                notification_type=12,
+                title="New Frame assigned",
+                message=frame.name,
+            )
 
     @extend_schema(request=serializers_create.FrameSerializer)
     def create(self, request, *args, **kwargs):

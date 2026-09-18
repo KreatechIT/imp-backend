@@ -24,6 +24,7 @@ class AdminSubmissionViewSet(ReadOnlyModelViewSet):
         member_uuid = self.request.query_params.get("member_uuid")
         from_date = self.request.query_params.get("from_date")
         to_date = self.request.query_params.get("to_date")
+        platform = self.request.query_params.get("platform")
 
         if member_uuid:
             queryset = queryset.filter(member__uuid=member_uuid)
@@ -31,4 +32,6 @@ class AdminSubmissionViewSet(ReadOnlyModelViewSet):
             queryset = queryset.filter(created__date__gte=from_date)
         if to_date:
             queryset = queryset.filter(created__date__lte=to_date)
+        if platform:
+            queryset = queryset.filter(platform=platform)
         return queryset
