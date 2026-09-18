@@ -64,3 +64,10 @@ class TermsAndConditionsSerializer(serializers.Serializer):
 
 class EditTermsAndConditionsSerializer(serializers.Serializer):
     content = SanitizedHTMLField(required=True)
+
+
+class AuditLogFilterSerializer(serializers.Serializer):
+    member_uuid = serializers.UUIDField(required=False)
+    action = serializers.CharField(required=False)
+    from_date = serializers.DateField(required=False)
+    to_date = serializers.DateField(required=False)
