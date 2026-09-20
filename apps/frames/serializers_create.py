@@ -76,6 +76,11 @@ class RenderRequestSerializer(serializers.Serializer):
     trim_out = serializers.FloatField(required=False, min_value=0)
 
 
+class PullSourceVideoSerializer(serializers.Serializer):
+    connection_uuid = serializers.UUIDField(required=True)
+    source_url = serializers.URLField(required=True)
+
+
 class UploadSourceVideoSerializer(serializers.Serializer):
     file = serializers.FileField(
         required=True,

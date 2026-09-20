@@ -63,3 +63,23 @@ def connect(code, redirect_uri):
 
     account_id = str(me.get("user_id") or short_lived.get("user_id"))
     return [(account_id, me.get("username", ""), token, long_lived.get("expires_in"))]
+
+
+def find_media(account_id, permalink, access_token):
+    target = permalink.split("?")[0].rstrip("/").lower()
+    url = f"{GRAPH}/{account_id}/media"
+    params = {
+        "fields": "id,media_type,media_url,permalink,thumbnail_url",
+        "access_token": access_token,
+        "limit": 100,
+    }
+
+    while url:
+        data = _check(requests.get(url, params=params, timeout=20))
+        for item in data.get("data", []):
+            if item.get("permalink", "").split("?")[0].rstrip("/").lower() == target:
+                return item
+        url = data.get("paging", {}).get("next")
+        params = None
+
+    return None

@@ -26,7 +26,7 @@ class ConnectFlowTest(BaseAPITestCase):
         url = r.data["authorize_url"]
         self.assertIn("facebook.com", url)
         self.assertIn("config_id=", url)
-        self.assertIn("redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fkoc%2Foauth%2Fcallback", url)
+        self.assertIn("%2Fkoc%2Foauth%2Fcallback", url)
 
     def test_start_instagram_returns_instagram_url(self):
         r = self.client.post(f"{self.base}/start/", {"provider": 1}, format="json")

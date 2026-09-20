@@ -6,11 +6,15 @@ from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 
+import requests
 from celery import shared_task
 from django.core.files import File
 from django.utils import timezone
 
+from apps.frames.models import RenderedContent, SourceVideo
+from apps.jobs.helper_functions import media_type_for
 from apps.notifications import helper_functions as notifications
+from apps.third_party import facebook, instagram
 
 STRETCH_TO_FRAME = "scale2ref=w=trunc(iw/2)*2:h=trunc(ih/2)*2[content][frame]"
 
@@ -21,9 +25,68 @@ RENDER_EXPIRY_SECONDS = 24 * 60 * 60
 
 
 @shared_task
-def expire_rendered_file(rendered_content_id):
-    from apps.frames.models import RenderedContent
+def pull_source_video(source_video_id):
+    source_video = SourceVideo.objects.select_related("connection").filter(
+        id=source_video_id,
+    ).first()
+    if source_video is None:
+        return
 
+    def fail(reason):
+        source_video.pull_status = 3
+        source_video.pull_failure_reason = reason
+        source_video.save()
+
+    connection = source_video.connection
+    if connection is None or connection.archived is not None:
+        return fail("This account is no longer connected. Reconnect it and try again.")
+    if connection.is_expired:
+        return fail("This connection has expired - reconnect the account and try again.")
+
+    module = instagram if connection.provider == 1 else facebook
+
+    try:
+        token = connection.get_access_token()
+        media = module.find_media(
+            connection.account_id, source_video.source_url, token,
+        )
+    except (facebook.FacebookError, instagram.InstagramError) as e:
+        return fail(str(e))
+
+    if media is None:
+        return fail(
+            "That link wasn't found on the connected account. You can only pull "
+            "your own posts - otherwise upload the video file instead."
+        )
+
+    media_url = media.get("media_url")
+    if not media_url:
+        return fail("This post has no downloadable file (it may be copyright-flagged).")
+
+    try:
+        response = requests.get(media_url, stream=True, timeout=120)
+        if response.status_code != 200:
+            return fail("Could not download the file for that post.")
+        buffer = BytesIO()
+        for chunk in response.iter_content(chunk_size=1024 * 1024):
+            buffer.write(chunk)
+        buffer.seek(0)
+    except requests.RequestException:
+        return fail("Could not download the file for that post.")
+
+    is_video = media.get("media_type") in ("VIDEO", "REELS")
+    filename = f"{media.get('id', uuid4().hex)}{'.mp4' if is_video else '.jpg'}"
+
+    source_video.original_file = File(buffer, name=filename)
+    source_video.media_type = media_type_for(filename)
+    source_video.original_name = filename
+    source_video.pull_status = 2
+    source_video.pull_failure_reason = ""
+    source_video.save()
+
+
+@shared_task
+def expire_rendered_file(rendered_content_id):
     rendered = RenderedContent.objects.filter(
         id=rendered_content_id, render_status=2,
     ).first()
@@ -321,8 +384,6 @@ def _caption_filter(rendered, canvas_size, tmp_dir):
 
 @shared_task
 def render_content(rendered_content_id):
-    from apps.frames.models import RenderedContent
-
     rendered = RenderedContent.objects.select_related(
         "frame", "member__user", "source_video",
     ).filter(id=rendered_content_id).first()
