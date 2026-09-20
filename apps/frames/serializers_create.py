@@ -83,11 +83,6 @@ class UploadSourceVideoSerializer(serializers.Serializer):
     )
 
 
-class PullSourceVideoSerializer(serializers.Serializer):
-    connection_uuid = serializers.UUIDField(required=True)
-    source_url = serializers.URLField(required=True)
-
-
 class PostDeskRenderRequestSerializer(serializers.Serializer):
     frame_uuid = serializers.UUIDField(required=True)
     crop_x = serializers.IntegerField(required=False)

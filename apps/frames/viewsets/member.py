@@ -8,9 +8,8 @@ from rest_framework.serializers import ValidationError
 from rest_framework.viewsets import ReadOnlyModelViewSet
 
 from apps.frames import choices, models, serializers_create, serializers_get
-from apps.frames.tasks import pull_source_video, render_content
+from apps.frames.tasks import render_content
 from apps.jobs.helper_functions import media_type_for
-from apps.third_party.models import ThirdPartyConnection
 from base import responses
 from base.utils import log_action
 from core import permissions
@@ -157,53 +156,6 @@ class SourceVideoViewSet(ReadOnlyModelViewSet):
             action="source_video.uploaded",
             target=source_video,
             detail=f"{member} uploaded video {source_video.original_name}",
-        )
-
-        data = self.serializer_class(source_video, context={"request": self.request}).data
-        return responses.CreatedSuccessResponse(data=data).get_response()
-
-    @extend_schema(request=serializers_create.PullSourceVideoSerializer)
-    @action(detail=False, methods=["post"], url_path="pull")
-    def pull(self, request, *args, **kwargs):
-        serializer = serializers_create.PullSourceVideoSerializer(data=request.data)
-        try:
-            serializer.is_valid(raise_exception=True)
-        except ValidationError as e:
-            return responses.InvalidDataError(details=e.detail).get_response()
-        validated = serializer.validated_data
-
-        member = self.get_member()
-        if member is None:
-            return responses.MissingItemError(
-                item_key="Member Id", item_id=str(request.user.id),
-            ).get_response()
-
-        connection = ThirdPartyConnection.objects.filter(
-            uuid=validated["connection_uuid"], member=member, archived=None,
-        ).first()
-        if connection is None:
-            return responses.MissingItemError(
-                item_key="Connection Id", item_id=validated["connection_uuid"],
-            ).get_response()
-        if connection.is_expired:
-            return responses.BadRequestError(
-                error_message="This connection has expired — reconnect the account and try again.",
-            ).get_response()
-
-        source_video = models.SourceVideo.objects.create(
-            member=member,
-            connection=connection,
-            source_url=validated["source_url"],
-            pull_status=1,
-        )
-
-        pull_source_video.delay(source_video.id)
-
-        log_action(
-            actor=request.user,
-            action="source_video.pull_requested",
-            target=source_video,
-            detail=f"{member} requested a video pull from {connection}",
         )
 
         data = self.serializer_class(source_video, context={"request": self.request}).data

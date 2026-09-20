@@ -16,7 +16,6 @@ urlpatterns = [
     path("members/", include(("apps.jobs.member_urls", "member-jobs"), namespace="member-jobs")),
     path("members/", include(("apps.earnings.member_urls", "member-earnings"), namespace="member-earnings")),
     path("members/", include(("apps.frames.member_urls", "member-frames"), namespace="member-frames")),
-    path("members/", include(("apps.third_party.member_urls", "member-third-party"), namespace="member-third-party")),
     path("members/", include(("apps.members.urls", "members"), namespace="members")),
     path("jobs/", include(("apps.frames.urls", "frames"), namespace="frames")),
     path("jobs/", include(("apps.jobs.urls", "jobs"), namespace="jobs")),
@@ -24,7 +23,6 @@ urlpatterns = [
     path("front-view/", include(("apps.front_view.urls", "front-view"), namespace="front-view")),
     path("earnings/", include(("apps.earnings.urls", "earnings"), namespace="earnings")),
     path("notifications/", include(("apps.notifications.urls", "notifications"), namespace="notifications")),
-    path("third-party/", include(("apps.third_party.urls", "third_party"), namespace="third_party")),
     path("koc/", include(("apps.koc.member_urls", "member-koc"), namespace="member-koc")),
     path("koc/", include(("apps.koc.urls", "koc"), namespace="koc")),
 

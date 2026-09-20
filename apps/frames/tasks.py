@@ -21,65 +21,6 @@ RENDER_EXPIRY_SECONDS = 24 * 60 * 60
 
 
 @shared_task
-def pull_source_video(source_video_id):
-    from apps.frames.models import SourceVideo
-    from apps.jobs.helper_functions import media_type_for
-    from apps.third_party.providers.meta import MetaAPIError
-    from apps.third_party.services import download_media, resolve_media
-
-    source_video = SourceVideo.objects.select_related("connection").filter(
-        id=source_video_id,
-    ).first()
-    if source_video is None:
-        return
-
-    connection = source_video.connection
-    if connection is None or connection.is_expired:
-        source_video.pull_status = 3
-        source_video.pull_failure_reason = "This connection has expired — reconnect the account and try again."
-        source_video.save()
-        return
-
-    try:
-        media = resolve_media(connection, source_url=source_video.source_url)
-    except MetaAPIError as e:
-        source_video.pull_status = 3
-        source_video.pull_failure_reason = str(e)
-        source_video.save()
-        return
-
-    media_url = media.get("media_url")
-    if not media_url:
-        source_video.pull_status = 3
-        source_video.pull_failure_reason = "Meta didn't return a file for this post (it may be copyright-flagged)."
-        source_video.save()
-        return
-
-    try:
-        response = download_media(media_url)
-    except MetaAPIError as e:
-        source_video.pull_status = 3
-        source_video.pull_failure_reason = str(e)
-        source_video.save()
-        return
-
-    buffer = BytesIO()
-    for chunk in response.iter_content(chunk_size=1024 * 1024):
-        buffer.write(chunk)
-    buffer.seek(0)
-
-    is_video = media.get("media_type") in ("VIDEO", "REELS")
-    filename = f"{media.get('id', uuid4().hex)}{'.mp4' if is_video else '.jpg'}"
-
-    source_video.original_file = File(buffer, name=filename)
-    source_video.media_type = media_type_for(filename)
-    source_video.original_name = filename
-    source_video.pull_status = 2
-    source_video.pull_failure_reason = ""
-    source_video.save()
-
-
-@shared_task
 def expire_rendered_file(rendered_content_id):
     from apps.frames.models import RenderedContent
 
