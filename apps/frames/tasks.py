@@ -112,6 +112,13 @@ def _capped_canvas(frame_size):
     )
 
 
+def _even_size(frame_size):
+    if not frame_size:
+        return None
+    width, height = frame_size
+    return max(2, width // 2 * 2), max(2, height // 2 * 2)
+
+
 def _probe_size(path):
     try:
         result = subprocess.run(
@@ -429,7 +436,12 @@ def render_content(rendered_content_id):
         out_path = os.path.join(tmp_dir, f"{uuid4().hex}{out_ext}")
 
         reference_path = background_path or frame_path
-        canvas_size = _capped_canvas(_probe_size(reference_path)) or _probe_size(reference_path) or (1080, 1920)
+        probed_size = _probe_size(reference_path)
+        canvas_size = (
+            (_capped_canvas(probed_size) if probed_size else None)
+            or _even_size(probed_size)
+            or (1080, 1920)
+        )
 
         pad_color = "black@0.0" if has_background else "black"
 
@@ -491,8 +503,10 @@ def render_content(rendered_content_id):
             cmd += [
                 "-filter_complex", filter_complex,
                 "-map", f"[{final_label}]",
+                "-map", "0:a?",
                 "-c:v", "libx264", "-preset", "medium", "-crf", "26",
                 "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-b:a", "128k",
                 out_path,
             ]
         elif is_animated_frame:
