@@ -226,8 +226,11 @@ INFLUENCER_API_ACCESS_CODE = config("INFLUENCER_API_ACCESS_CODE", default="")
 META_APP_ID = config("META_APP_ID", default="")
 META_APP_SECRET = config("META_APP_SECRET", default="")
 META_GRAPH_API_VERSION = config("META_GRAPH_API_VERSION", default="v21.0")
+FACEBOOK_LOGIN_CONFIG_ID = config("FACEBOOK_LOGIN_CONFIG_ID", default="")
+INSTAGRAM_APP_ID = config("INSTAGRAM_APP_ID", default="")
+INSTAGRAM_APP_SECRET = config("INSTAGRAM_APP_SECRET", default="")
 
 FRONTEND_BASE_URL = config("FRONTEND_BASE_URL", default="http://localhost:3000")
-THIRD_PARTY_CONNECT_RESULT_PATH = config("THIRD_PARTY_CONNECT_RESULT_PATH", default="/koc/profile")
+THIRD_PARTY_CALLBACK_PATH = config("THIRD_PARTY_CALLBACK_PATH", default="/koc/oauth/callback")
 
 ENVIRONMENT = "local"

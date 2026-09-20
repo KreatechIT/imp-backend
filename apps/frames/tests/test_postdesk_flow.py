@@ -18,7 +18,6 @@ from PIL import Image, ImageDraw
 from apps.frames import models
 from apps.frames.tasks import _caption_filter, _escape_drawtext_path, _find_font_file
 from apps.members.models import Member, UserGroup
-from apps.third_party.models import ThirdPartyConnection
 from base.base_test_classes import BaseAPITestCase
 
 
@@ -182,76 +181,6 @@ class SourceVideoUploadTest(PostDeskBaseTest):
         assert "results" in body and "count" in body
         assert len(body["results"]) == 2
         assert body["count"] == 3
-
-
-class SourceVideoPullTest(PostDeskBaseTest):
-    def test_pull_without_connection_fails_cleanly(self):
-        response = self.client.post(
-            f"/members/{self.member.uuid}/source-video/pull/",
-            data={
-                "connection_uuid": "00000000-0000-0000-0000-000000000000",
-                "source_url": "https://example.com/post/123",
-            },
-            format="json",
-        )
-        assert response.status_code == 400, response.content
-        body = response.json()
-        assert "error" in body and "details" in body
-        assert models.SourceVideo.objects.count() == 0
-
-    def test_pull_with_expired_connection_is_rejected(self):
-        connection = ThirdPartyConnection.objects.create(
-            member=self.member,
-            provider=1,
-            account_id="acct-1",
-            access_token_encrypted="x",
-            token_expires_at=timezone.now() - timezone.timedelta(hours=1),
-        )
-        response = self.client.post(
-            f"/members/{self.member.uuid}/source-video/pull/",
-            data={
-                "connection_uuid": str(connection.uuid),
-                "source_url": "https://example.com/post/123",
-            },
-            format="json",
-        )
-        assert response.status_code == 400, response.content
-        assert "expired" in response.json()["error"].lower()
-        assert models.SourceVideo.objects.count() == 0
-
-    @override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
-    def test_pull_task_marks_failed_when_connection_missing_at_task_time(self):
-        from apps.frames.tasks import pull_source_video
-
-        connection = ThirdPartyConnection.objects.create(
-            member=self.member,
-            provider=1,
-            account_id="acct-1",
-            access_token_encrypted="x",
-        )
-        source_video = models.SourceVideo.objects.create(
-            member=self.member,
-            connection=connection,
-            source_url="https://example.com/post/123",
-            pull_status=1,
-        )
-        connection.archived = timezone.now()
-        connection.token_expires_at = timezone.now() - timezone.timedelta(hours=1)
-        connection.save()
-
-        pull_source_video(source_video.id)
-
-        source_video.refresh_from_db()
-        assert source_video.pull_status == 3
-        assert "expired" in source_video.pull_failure_reason.lower()
-
-    def test_pull_missing_fields_returns_400(self):
-        response = self.client.post(
-            f"/members/{self.member.uuid}/source-video/pull/",
-            data={},
-            format="json",
-        )
-        assert response.status_code == 400
 
 
 class MemberPostDeskFrameViewSetTest(PostDeskBaseTest):

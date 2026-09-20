@@ -30,9 +30,9 @@ class ThirdPartyConnection(TimeStampedModel):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["member", "provider"],
+                fields=["member", "provider", "account_id"],
                 condition=models.Q(archived__isnull=True),
-                name="unique_active_third_party_connection_per_member",
+                name="unique_active_third_party_account_per_member",
             ),
         ]
         indexes = [

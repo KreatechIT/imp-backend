@@ -25,6 +25,7 @@ urlpatterns = [
     path("notifications/", include(("apps.notifications.urls", "notifications"), namespace="notifications")),
     path("koc/", include(("apps.koc.member_urls", "member-koc"), namespace="member-koc")),
     path("koc/", include(("apps.koc.urls", "koc"), namespace="koc")),
+    path("members/", include(("apps.third_party.member_urls", "member-third-party"), namespace="member-third-party")),
 
     # swagger urls
     path("schema/", SpectacularAPIView.as_view(), name="schema"),
