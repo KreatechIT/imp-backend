@@ -212,7 +212,6 @@ class SourceVideoViewSet(ReadOnlyModelViewSet):
         return responses.CreatedSuccessResponse(data=data).get_response()
 
 
-
 class FrameRenderViewSet(ReadOnlyModelViewSet):
     """The Frame Editor: import content, apply a frame, export the result.
 

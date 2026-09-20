@@ -432,12 +432,29 @@ def render_content(rendered_content_id):
 
     frame = rendered.frame
     source_video = rendered.source_video
+
+    def render_failed(reason):
+        rendered.render_status = 3
+        rendered.save()
+        log_action(
+            actor=rendered.member.user,
+            action="rendered_content.render_failed",
+            target=rendered,
+            status="failed",
+            detail=f"{frame.name} - {reason}",
+        )
+        notifications.notify(
+            recipient=rendered.member.user,
+            role=2,
+            notification_type=15,
+            title="Render failed",
+            message=reason,
+        )
+
     has_overlay = bool(frame.image)
     has_background = bool(frame.background)
     if (not has_overlay and not has_background) or not source_video.original_file:
-        rendered.render_status = 3
-        rendered.save()
-        return
+        return render_failed("The frame or source video is missing.")
 
     is_animated_frame = has_overlay and frame.image.name.lower().endswith(".gif")
     is_video_content = source_video.media_type == 1
@@ -576,14 +593,10 @@ def render_content(rendered_content_id):
         try:
             result = subprocess.run(cmd, capture_output=True, timeout=300)
         except subprocess.TimeoutExpired:
-            rendered.render_status = 3
-            rendered.save()
-            return
+            return render_failed("This video took too long to process.")
 
         if result.returncode != 0 or not os.path.exists(out_path):
-            rendered.render_status = 3
-            rendered.save()
-            return
+            return render_failed("The video could not be processed.")
 
         with open(out_path, "rb") as fh:
             rendered.rendered_file.save(
@@ -591,6 +604,13 @@ def render_content(rendered_content_id):
             )
         rendered.render_status = 2
         rendered.save()
+
+    log_action(
+        actor=rendered.member.user,
+        action="rendered_content.rendered",
+        target=rendered,
+        detail=f"{frame.name} -> {rendered.rendered_file.name}",
+    )
 
     if frame.frame_type == 2:
         expire_rendered_file.apply_async(

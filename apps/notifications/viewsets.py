@@ -2,7 +2,7 @@ from django.utils import timezone
 from rest_framework.decorators import action
 from rest_framework.viewsets import ReadOnlyModelViewSet
 
-from apps.notifications import models, serializers_get
+from apps.notifications import choices, models, serializers_get
 from base import responses
 from core import permissions
 from core.pagination import StandardPagination
@@ -17,6 +17,12 @@ class NotificationViewSet(ReadOnlyModelViewSet):
 
     def get_queryset(self):
         queryset = models.Notification.objects.filter(recipient=self.request.user)
+
+        member = getattr(self.request.user, "member", None)
+        if member and member.role and member.role.name == "koc":
+            queryset = queryset.filter(
+                notification_type__in=choices.KOC_NOTIFICATION_TYPES,
+            )
         unread_only = self.request.query_params.get("unread")
         if unread_only in ("1", "true", "True"):
             queryset = queryset.filter(read_at__isnull=True)

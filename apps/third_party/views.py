@@ -5,6 +5,7 @@ from django.core import signing
 from django.utils import timezone
 from rest_framework.views import APIView
 
+from apps.notifications import helper_functions as notifications
 from base import responses
 from core import permissions
 
@@ -138,6 +139,14 @@ class SocialMediaExchangeView(APIView):
                 "account_id": connection.account_id,
                 "account_label": connection.account_label,
             })
+
+        notifications.notify(
+            recipient=member.user,
+            role=2,
+            notification_type=16,
+            title="Account connected",
+            message=", ".join(a["account_label"] for a in connected if a["account_label"]),
+        )
 
         return responses.SuccessResponse(data={
             "status": "connected",
