@@ -34,6 +34,9 @@ class MemberContentSerializer(serializers.ModelSerializer):
     media_type = serializers.IntegerField(source="source_video.media_type", read_only=True)
     original_name = serializers.CharField(source="source_video.original_name", read_only=True)
     source_url = serializers.URLField(source="source_video.source_url", read_only=True)
+    pull_duration_ms = serializers.IntegerField(
+        source="source_video.pull_duration_ms", read_only=True,
+    )
 
     def get_member_role(self, obj):
         return obj.member.role.name if obj.member.role else None
@@ -69,6 +72,7 @@ class MemberContentSerializer(serializers.ModelSerializer):
             "media_type",
             "original_name",
             "source_url",
+            "pull_duration_ms",
             "rendered_file",
             "render_status",
             "caption_text",

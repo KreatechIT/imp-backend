@@ -220,6 +220,7 @@ class SourceVideo(TimeStampedModel):
     )
     pull_failure_reason = models.CharField(max_length=500, blank=True, default="")
     source_url = models.URLField(max_length=500, blank=True, null=True)
+    pull_duration_ms = models.PositiveIntegerField(blank=True, null=True)
 
     class Meta:
         indexes = [

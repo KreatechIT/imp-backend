@@ -1,5 +1,6 @@
 import os
 import subprocess
+import time
 import tempfile
 from datetime import timedelta
 from io import BytesIO
@@ -14,6 +15,7 @@ from django.utils import timezone
 from apps.frames.models import RenderedContent, SourceVideo
 from apps.jobs.helper_functions import media_type_for
 from apps.notifications import helper_functions as notifications
+from base.utils import log_action
 from apps.third_party import facebook, instagram
 
 STRETCH_TO_FRAME = "scale2ref=w=trunc(iw/2)*2:h=trunc(ih/2)*2[content][frame]"
@@ -26,16 +28,36 @@ RENDER_EXPIRY_SECONDS = 24 * 60 * 60
 
 @shared_task
 def pull_source_video(source_video_id):
-    source_video = SourceVideo.objects.select_related("connection").filter(
-        id=source_video_id,
-    ).first()
+    started = time.monotonic()
+
+    source_video = SourceVideo.objects.select_related(
+        "connection", "member__user",
+    ).filter(id=source_video_id).first()
     if source_video is None:
         return
+
+    def elapsed_ms():
+        return int((time.monotonic() - started) * 1000)
 
     def fail(reason):
         source_video.pull_status = 3
         source_video.pull_failure_reason = reason
+        source_video.pull_duration_ms = elapsed_ms()
         source_video.save()
+        log_action(
+            actor=source_video.member.user,
+            action="source_video.pull_failed",
+            target=source_video,
+            status="failed",
+            detail=f"{source_video.source_url} - {reason} ({source_video.pull_duration_ms}ms)",
+        )
+        notifications.notify(
+            recipient=source_video.member.user,
+            role=2,
+            notification_type=14,
+            title="Import failed",
+            message=reason,
+        )
 
     connection = source_video.connection
     if connection is None or connection.archived is not None:
@@ -82,7 +104,25 @@ def pull_source_video(source_video_id):
     source_video.original_name = filename
     source_video.pull_status = 2
     source_video.pull_failure_reason = ""
+    source_video.pull_duration_ms = elapsed_ms()
     source_video.save()
+
+    log_action(
+        actor=source_video.member.user,
+        action="source_video.pulled",
+        target=source_video,
+        detail=(
+            f"{source_video.source_url} -> {filename} "
+            f"({source_video.original_file.size} bytes, {source_video.pull_duration_ms}ms)"
+        ),
+    )
+    notifications.notify(
+        recipient=source_video.member.user,
+        role=2,
+        notification_type=13,
+        title="Your video is ready to edit",
+        message=source_video.original_name,
+    )
 
 
 @shared_task
