@@ -140,13 +140,11 @@ class AvailableJobViewSet(ReadOnlyModelViewSet):
                 item_key=self.item_key, item_id=uuid,
             ).get_response()
 
-        if not job.is_live:
-            if job.status == 2 and timezone.now() < job.start_date:
-                opens_at = timezone.localtime(job.start_date)
-                details = f"Job opens on {opens_at:%d %b %Y}"
-            else:
-                details = "Job is not open for applications"
-            return responses.BadRequestError(details=details).get_response()
+        # Applying is allowed before start_date; tasks still begin at start_date.
+        if job.status != 2 or (job.end_date and timezone.now() > job.end_date):
+            return responses.BadRequestError(
+                details="Job is not open for applications",
+            ).get_response()
 
         try:
             with transaction.atomic():
