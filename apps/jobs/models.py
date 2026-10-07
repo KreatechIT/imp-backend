@@ -179,6 +179,12 @@ class Job(TimeStampedModel):
         return self.archived is not None
 
     @property
+    def accepts_applications(self):
+        if self.status != 2 or self.archived:
+            return False
+        return not (self.end_date and timezone.now() > self.end_date)
+
+    @property
     def is_live(self):
         now = timezone.now()
         if self.status != 2 or self.archived:
