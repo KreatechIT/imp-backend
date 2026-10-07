@@ -18,10 +18,11 @@
 
 ## 3. Changelog
 
-**Current version: 1.9** — 2026-09-04
+**Current version: 1.10** — 2026-10-07
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.10 | 2026-10-07 | **Changed**: `GET /front-view/influencer/leaderboard/` (§20a) is documented as the real, unmerged ranking; the member app now reads the merged board (§20c) instead. **Added**: public merged leaderboard `GET /front-view/leaderboard/` (§20c) and admin CRUD for dummy leaderboard influencers `/front-view/leaderboard-dummies/` (§20d). |
 | 1.9 | 2026-09-04 | **Reverted** 1.8's coupling of frame compositing into task content submission — design mockups (Frame Editor, Posting Rules) confirm framing is a standalone tool, not part of submitting content: `POST /members/{member_uuid}/tasks/{uuid}/content/` (§31) is back to a plain multi-file upload, no `frame_uuid`, no compositing. **Added**: standalone Frame Editor render endpoint, `POST /frame/{frame_uuid}/render/` (§14c) — takes a raw photo/video, queues server-side compositing (Celery + FFmpeg) against that frame, no job/task/org needed in the path since a frame already belongs to one job. New model `RenderedContent` replaces the `TaskFile` fields added in 1.8. **Added**: `script` field on Job (§12/§13) — free text, admin-authored, shown to the member alongside a job's frames as campaign instructions. **Added**: explicit PNG/GIF-only validation on frame upload (§14/§14a) — a video or other image format is now rejected with a clear message rather than an incidental Pillow error. `GET/DELETE /frame/content/` (§35a) unchanged in shape, now backed by `RenderedContent`. |
 | 1.8 | 2026-09-04 | **Changed**: `POST /members/{member_uuid}/tasks/{uuid}/content/` (§31) now takes `frame_uuid` as a required path segment — `.../content/{frame_uuid}/` — instead of a bare file upload with no frame. Uploading now saves the raw file immediately and queues server-side compositing (Celery + FFmpeg) in the background instead of relying on client-side canvas compositing, which could not handle video at all and was unreliably slow for an animated-GIF frame over a photo (client feedback: frame import/export was broken for video). Each upload now produces two `TaskFile` rows (`is_original` flag distinguishes original vs. framed; `frame_uuid` and `render_status` added to the file object, see §31/§15). **Added**: `RENDER_READY` notification type (§35), fired when a queued composite finishes. **Added**: admin original-content library, `GET/DELETE /frame/content/` (§35a) — every raw upload across every job with member/job/task/frame context; delete is a real hard delete of both the original and its framed output, files included. |
 | 1.7 | 2026-09-03 | **Fixed**: `/media/...` responses (frame images, banners, profile pictures, uploaded proof/content files — anything under `MEDIA_URL`) were served with no `Access-Control-Allow-Origin` header at all, because nginx serves `/media/` directly off disk via an `alias`, bypassing Django and `django-cors-headers` entirely. This tainted any `<canvas>` a frontend drew a media image onto (e.g. compositing a frame over a photo for export), blocking `canvas.toDataURL()` / `toBlob()` with a `SecurityError` even though `img.crossOrigin = 'anonymous'` was set correctly client-side. Added `Access-Control-Allow-Origin: * always;` to the `/media/` nginx location block on production. Not a code change in this repo — infra-only fix, see §4 Conventions. |
@@ -835,7 +836,7 @@ All aggregate math (base pay, deduction, total, per-member and summed) was verif
 
 ## 20a. Influencer leaderboard (third-party proxy) — `/front-view/influencer/leaderboard/`
 
-`IsAuthenticated`. Server-side proxy to an external influencer-marketing platform's leaderboard API (`staging-api.kinggroup44.com`). The upstream endpoint is gated only by an `access_code` in its URL; this proxy keeps that code server-side (`INFLUENCER_API_BASE_URL` / `INFLUENCER_API_ACCESS_CODE` env vars). Open to both roles so members can see the leaderboard too.
+`IsAuthenticated`. Server-side proxy to an external influencer-marketing platform's leaderboard API (`staging-api.kinggroup44.com`). The upstream endpoint is gated only by an `access_code` in its URL; this proxy keeps that code server-side (`INFLUENCER_API_BASE_URL` / `INFLUENCER_API_ACCESS_CODE` env vars). This is the real ranking only; members read the merged board in §20c.
 
 | Method | Path |
 |---|---|
@@ -886,6 +887,52 @@ No params. Returns the upstream response verbatim — top members ranked by tota
 `rank` — `null` if the member made no deposit this month (unranked). `next_rank` / `next_rank_amount` — the rank and deposit total directly above this member, i.e. what they need to beat to move up; both `null` if already rank 1, or if unranked.
 
 **400** if the upstream returns 404 for an unknown phone number. **502** if the upstream is unreachable or errors.
+
+## 20c. Public leaderboard — `/front-view/leaderboard/`
+
+`IsAuthenticated`. The real ranking (§20a) merged with every non-archived dummy influencer (§20d), sorted by `deposit_amount` descending, cut to the top **20**, and re-ranked 1–20. Dummy rows have exactly the same shape as real rows and are not marked as dummy. Bare array, not paginated.
+
+| Method | Path |
+|---|---|
+| GET | `/front-view/leaderboard/` |
+
+```json
+[
+  {
+    "rank": 1,
+    "member_uuid": "uuid",
+    "full_name": "string",
+    "phone_number": "string",
+    "reg_count": 0,
+    "cvs_count": 0,
+    "deposit_amount": "0.00"
+  }
+]
+```
+
+Ties keep real rows ahead of dummy rows. **502** `{"error": "Unable to contact third party"}` if the upstream is unreachable or errors.
+
+## 20d. Dummy leaderboard influencers — `/front-view/leaderboard-dummies/`
+
+`IsAuthenticated`. Admin-managed fake entries that are merged into the public leaderboard (§20c).
+
+| Method | Path |
+|---|---|
+| GET | `/front-view/leaderboard-dummies/` |
+| POST | `/front-view/leaderboard-dummies/` |
+| GET | `/front-view/leaderboard-dummies/{uuid}/` |
+| PATCH | `/front-view/leaderboard-dummies/{uuid}/` |
+| PATCH | `/front-view/leaderboard-dummies/{uuid}/archive/` |
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `full_name` | string | yes (create) | max 150 |
+| `phone_number` | string | no | max 30 |
+| `deposit_amount` | decimal(14,2) | yes (create) | ≥ 0 |
+| `reg_count` | int | no | ≥ 0, default 0 |
+| `cvs_count` | int | no | ≥ 0, default 0 |
+
+List is paginated, non-archived only, ordered by `deposit_amount` descending. Archiving removes the entry from the public leaderboard; an archived entry cannot be edited or archived again.
 
 ## 21. Banners — `/front-view/banners/`
 

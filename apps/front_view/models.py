@@ -84,6 +84,50 @@ class Banner(TimeStampedModel):
         return True
 
 
+class DummyInfluencer(TimeStampedModel):
+    full_name = models.CharField(
+        verbose_name=_("Full Name"),
+        max_length=150,
+    )
+    phone_number = models.CharField(
+        verbose_name=_("Phone Number"),
+        max_length=30,
+        blank=True,
+        default="",
+    )
+    deposit_amount = models.DecimalField(
+        verbose_name=_("Deposit Amount"),
+        max_digits=14,
+        decimal_places=2,
+        default=0,
+    )
+    reg_count = models.PositiveIntegerField(
+        verbose_name=_("Registrations"),
+        default=0,
+    )
+    cvs_count = models.PositiveIntegerField(
+        verbose_name=_("Conversions"),
+        default=0,
+    )
+    archived = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["created"]),
+        ]
+
+    def __str__(self):
+        return self.full_name
+
+    def archive(self):
+        self.archived = timezone.now()
+        self.save()
+
+    @property
+    def is_archived(self):
+        return self.archived is not None
+
+
 class Guide(TimeStampedModel):
     """The info card shown on one screen, filled in by an admin."""
 
