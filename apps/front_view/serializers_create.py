@@ -33,6 +33,27 @@ class EditBannerSerializer(BannerSerializer):
     ordering = serializers.IntegerField(required=False, min_value=0)
 
 
+class DummyInfluencerSerializer(serializers.Serializer):
+    full_name = serializers.CharField(required=True, max_length=150)
+    phone_number = serializers.CharField(
+        required=False, allow_blank=True, max_length=30,
+    )
+    deposit_amount = serializers.DecimalField(
+        max_digits=14, decimal_places=2, min_value=0, required=True,
+    )
+    reg_count = serializers.IntegerField(required=False, min_value=0, default=0)
+    cvs_count = serializers.IntegerField(required=False, min_value=0, default=0)
+
+
+class EditDummyInfluencerSerializer(DummyInfluencerSerializer):
+    full_name = serializers.CharField(required=False, max_length=150)
+    deposit_amount = serializers.DecimalField(
+        max_digits=14, decimal_places=2, min_value=0, required=False,
+    )
+    reg_count = serializers.IntegerField(required=False, min_value=0)
+    cvs_count = serializers.IntegerField(required=False, min_value=0)
+
+
 class GuideSerializer(serializers.Serializer):
     location = serializers.ChoiceField(
         choices=choices.GUIDE_LOCATION_CHOICES, required=True,

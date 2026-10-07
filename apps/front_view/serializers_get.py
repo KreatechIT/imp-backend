@@ -21,6 +21,21 @@ class BannerSerializer(serializers.ModelSerializer):
         ]
 
 
+class DummyInfluencerSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = models.DummyInfluencer
+        fields = [
+            "uuid",
+            "full_name",
+            "phone_number",
+            "deposit_amount",
+            "reg_count",
+            "cvs_count",
+            "created",
+        ]
+
+
 class GuideSerializer(serializers.ModelSerializer):
 
     class Meta:

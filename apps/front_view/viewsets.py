@@ -114,6 +114,80 @@ class BannerViewSet(ReadOnlyModelViewSet):
         return responses.SuccessResponse(data=data).get_response()
 
 
+class DummyInfluencerViewSet(ReadOnlyModelViewSet):
+    serializer_class = serializers_get.DummyInfluencerSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardPagination
+    lookup_field = "uuid"
+    item_key = "Dummy Influencer Id"
+
+    def get_queryset(self):
+        return models.DummyInfluencer.objects.filter(
+            archived=None,
+        ).order_by("-deposit_amount", "-created")
+
+    @extend_schema(request=serializers_create.DummyInfluencerSerializer)
+    def create(self, request, *args, **kwargs):
+        serializer = serializers_create.DummyInfluencerSerializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except ValidationError as e:
+            return responses.InvalidDataError(details=e.detail).get_response()
+
+        dummy = models.DummyInfluencer.objects.create(**serializer.validated_data)
+
+        data = self.serializer_class(dummy).data
+        return responses.CreatedSuccessResponse(data=data).get_response()
+
+    @extend_schema(request=serializers_create.EditDummyInfluencerSerializer)
+    def update(self, request, uuid=None, *args, **kwargs):
+        serializer = serializers_create.EditDummyInfluencerSerializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except ValidationError as e:
+            return responses.InvalidDataError(details=e.detail).get_response()
+
+        try:
+            dummy = models.DummyInfluencer.objects.get(uuid=uuid)
+        except models.DummyInfluencer.DoesNotExist:
+            return responses.MissingItemError(
+                item_key=self.item_key, item_id=uuid,
+            ).get_response()
+
+        if dummy.is_archived:
+            return responses.ItemAlreadyArchivedError(
+                item_key=self.item_key, item_id=uuid,
+            ).get_response()
+
+        dummy.update(**serializer.validated_data)
+
+        data = self.serializer_class(dummy).data
+        return responses.SuccessResponse(data=data).get_response()
+
+    @extend_schema(request=serializers_create.EditDummyInfluencerSerializer)
+    def partial_update(self, request, uuid=None, *args, **kwargs):
+        return self.update(request, uuid=uuid, *args, **kwargs)
+
+    @action(detail=True, methods=["patch"])
+    def archive(self, request, uuid=None, *args, **kwargs):
+        try:
+            dummy = models.DummyInfluencer.objects.get(uuid=uuid)
+        except models.DummyInfluencer.DoesNotExist:
+            return responses.MissingItemError(
+                item_key=self.item_key, item_id=uuid,
+            ).get_response()
+
+        if dummy.is_archived:
+            return responses.ItemAlreadyArchivedError(
+                item_key=self.item_key, item_id=uuid,
+            ).get_response()
+
+        dummy.archive()
+
+        data = self.serializer_class(dummy).data
+        return responses.SuccessResponse(data=data).get_response()
+
+
 class GuideViewSet(ReadOnlyModelViewSet):
     serializer_class = serializers_get.GuideSerializer
     permission_classes = [permissions.IsAuthenticated]
