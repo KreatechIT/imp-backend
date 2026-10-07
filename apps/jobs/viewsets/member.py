@@ -141,7 +141,7 @@ class AvailableJobViewSet(ReadOnlyModelViewSet):
             ).get_response()
 
         # Applying is allowed before start_date; tasks still begin at start_date.
-        if job.status != 2 or (job.end_date and timezone.now() > job.end_date):
+        if not job.accepts_applications:
             return responses.BadRequestError(
                 details="Job is not open for applications",
             ).get_response()
