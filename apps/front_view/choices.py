@@ -24,3 +24,22 @@ TERMS_CATEGORY_CHOICES = (
     (2, _("LEADERBOARD")),
     (3, _("JOB")),
 )
+
+INFLUENCER_SYNC_SLOT_CHOICES = (
+    (1, _("NIGHT")),
+    (2, _("DAY")),
+)
+
+INFLUENCER_SYNC_STATUS_CHOICES = (
+    (1, _("SUCCESS")),
+    (2, _("FAILED")),
+)
+
+# Keyed by slot. Clock times are Asia/Kuala_Lumpur (CELERY_TIMEZONE). A
+# failed run is retried once, retry_seconds later.
+INFLUENCER_SYNC_SCHEDULE = {
+    1: {"hour": 2, "minute": 0, "retry_seconds": 60 * 60},
+    2: {"hour": 11, "minute": 58, "retry_seconds": 30 * 60},
+}
+INFLUENCER_SYNC_MAX_RETRIES = 1
+INFLUENCER_SYNC_TIMEOUT_SECONDS = 30

@@ -68,3 +68,44 @@ class SingleTermsAndConditionsSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.TermsAndConditions
         fields = ["content"]
+
+
+class InfluencerSnapshotSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = models.InfluencerSnapshot
+        fields = [
+            "rank",
+            "member_uuid",
+            "full_name",
+            "phone_number",
+            "reg_count",
+            "cvs_count",
+            "deposit_amount",
+        ]
+
+
+class InfluencerSyncRunSerializer(serializers.ModelSerializer):
+    slot_display = serializers.CharField(source="get_slot_display", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+
+    class Meta:
+        model = models.InfluencerSyncRun
+        fields = [
+            "uuid",
+            "slot",
+            "slot_display",
+            "status",
+            "status_display",
+            "attempt",
+            "row_count",
+            "error",
+            "created",
+        ]
+
+
+class InfluencerSyncRunDetailSerializer(InfluencerSyncRunSerializer):
+    rows = InfluencerSnapshotSerializer(many=True, read_only=True)
+
+    class Meta(InfluencerSyncRunSerializer.Meta):
+        fields = InfluencerSyncRunSerializer.Meta.fields + ["not_found", "rows"]

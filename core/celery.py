@@ -2,6 +2,8 @@ import os
 from celery import Celery
 from celery.schedules import crontab
 
+from apps.front_view import choices as front_view_choices
+
 django_environment = os.environ.get("DJANGO_ENV", None)
 
 if django_environment == "production":
@@ -24,3 +26,12 @@ app.conf.beat_schedule = {
         "schedule": crontab(hour=9, minute=0),
     },
 }
+
+# Crontabs are evaluated in CELERY_TIMEZONE (Asia/Kuala_Lumpur). The times
+# live in front_view.choices.INFLUENCER_SYNC_SCHEDULE.
+for _slot, _when in front_view_choices.INFLUENCER_SYNC_SCHEDULE.items():
+    app.conf.beat_schedule[f"sync-influencer-leaderboard-{_slot}"] = {
+        "task": "apps.front_view.tasks.sync_influencer_leaderboard",
+        "schedule": crontab(hour=_when["hour"], minute=_when["minute"]),
+        "args": (_slot,),
+    }

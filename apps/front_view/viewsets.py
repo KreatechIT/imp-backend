@@ -1,6 +1,9 @@
+from datetime import datetime, time
+
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_datetime
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.serializers import ValidationError
@@ -334,3 +337,58 @@ class TermsAndConditionsViewSet(ReadOnlyModelViewSet):
     @extend_schema(request=serializers_create.EditTermsAndConditionsSerializer)
     def partial_update(self, request, uuid=None, *args, **kwargs):
         return self.update(request, uuid=uuid, *args, **kwargs)
+
+
+def parse_bound(value, end_of_day):
+    """An ISO datetime, or a plain date meaning the start/end of that day."""
+    day = parse_date(value)
+    if day is not None:
+        parsed = datetime.combine(day, time.max if end_of_day else time.min)
+    else:
+        parsed = parse_datetime(value)
+        if parsed is None:
+            raise ValueError(value)
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed)
+    return parsed
+
+
+class InfluencerSyncRunViewSet(ReadOnlyModelViewSet):
+    """History of the scheduled influencer syncs, newest first. Filter with
+    ?date_from=&date_to= (date or datetime), ?status= and ?slot=. The detail
+    view carries that run's full ranking."""
+
+    serializer_class = serializers_get.InfluencerSyncRunSerializer
+    permission_classes = [permissions.IsAdmin]
+    pagination_class = StandardPagination
+    lookup_field = "uuid"
+    item_key = "Influencer Sync Run Id"
+
+    def get_serializer_class(self):
+        if self.action == "retrieve":
+            return serializers_get.InfluencerSyncRunDetailSerializer
+        return self.serializer_class
+
+    def get_queryset(self):
+        queryset = models.InfluencerSyncRun.objects.prefetch_related("rows")
+        params = self.request.query_params
+        for key in ("status", "slot"):
+            if params.get(key):
+                queryset = queryset.filter(**{key: params[key]})
+        if params.get("date_from"):
+            queryset = queryset.filter(
+                created__gte=parse_bound(params["date_from"], end_of_day=False),
+            )
+        if params.get("date_to"):
+            queryset = queryset.filter(
+                created__lte=parse_bound(params["date_to"], end_of_day=True),
+            )
+        return queryset.order_by("-created")
+
+    def list(self, request, *args, **kwargs):
+        try:
+            return super().list(request, *args, **kwargs)
+        except ValueError:
+            return responses.BadRequestError(
+                details="Use an ISO date or datetime for date_from and date_to",
+            ).get_response()

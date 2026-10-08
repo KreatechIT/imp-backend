@@ -9,3 +9,6 @@ front_view_router.register(
 )
 front_view_router.register("guides", viewsets.GuideViewSet, basename="guides")
 front_view_router.register("terms", viewsets.TermsAndConditionsViewSet, basename="terms")
+front_view_router.register(
+    "influencer/sync-runs", viewsets.InfluencerSyncRunViewSet, basename="influencer-sync-runs",
+)
