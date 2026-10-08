@@ -5,18 +5,25 @@ from apps.frames import models
 
 class RenderedContentSerializer(serializers.ModelSerializer):
     member_uuid = serializers.UUIDField(source="member.uuid")
-    member = serializers.CharField(source="member.full_name")
+    member = serializers.SerializerMethodField()
+    username = serializers.CharField(source="member.user.username")
+    phone_number = serializers.CharField(source="member.phone_number", allow_null=True)
     org = serializers.CharField(source="frame.job.company.name")
     job_uuid = serializers.UUIDField(source="frame.job.uuid")
     job_title = serializers.CharField(source="frame.job.title")
     frame_uuid = serializers.UUIDField(source="frame.uuid")
     frame_name = serializers.CharField(source="frame.name")
 
+    def get_member(self, obj):
+        return str(obj.member)
+
     class Meta:
         model = models.RenderedContent
         fields = [
             "uuid",
             "member",
+            "username",
+            "phone_number",
             "member_uuid",
             "org",
             "job_uuid",

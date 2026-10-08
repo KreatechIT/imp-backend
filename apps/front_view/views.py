@@ -29,6 +29,22 @@ class TermsPublicView(GenericAPIView):
 LEADERBOARD_SIZE = 20
 
 
+def mask_name(name):
+    name = (name or "").strip()
+    if not name:
+        return ""
+    if len(name) <= 2:
+        return name[0] + "*"
+    return name[0] + "*" * (len(name) - 2) + name[-1]
+
+
+def mask_phone(phone):
+    phone = (phone or "").strip()
+    if len(phone) <= 4:
+        return "*" * len(phone)
+    return "*" * (len(phone) - 4) + phone[-4:]
+
+
 def fetch_real_leaderboard():
     url = (
         f"{settings.INFLUENCER_API_BASE_URL}"
@@ -65,6 +81,8 @@ class InfluencerLeaderboardView(APIView):
 class LeaderboardView(APIView):
     """The public leaderboard: real ranking plus the admin's dummy
     influencers, best deposit first, top LEADERBOARD_SIZE re-ranked from 1.
+    Names show only the first and last character, phone numbers only the
+    last 4 digits.
     """
 
     permission_classes = [permissions.IsAuthenticated]
@@ -91,7 +109,15 @@ class LeaderboardView(APIView):
             key=lambda row: Decimal(str(row["deposit_amount"])),
             reverse=True,
         )[:LEADERBOARD_SIZE]
-        data = [{**row, "rank": rank} for rank, row in enumerate(merged, start=1)]
+        data = [
+            {
+                **row,
+                "rank": rank,
+                "full_name": mask_name(row.get("full_name")),
+                "phone_number": mask_phone(row.get("phone_number")),
+            }
+            for rank, row in enumerate(merged, start=1)
+        ]
 
         return responses.SuccessResponse(data=data).get_response()
 
