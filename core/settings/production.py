@@ -56,3 +56,8 @@ SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SECURE = True
 
 ENVIRONMENT = "production"
+
+# Required in production, so a missing value fails at startup instead of
+# the sync quietly calling the wrong server.
+INFLUENCER_API_BASE_URL = config("INFLUENCER_API_BASE_URL")
+INFLUENCER_API_ACCESS_CODE = config("INFLUENCER_API_ACCESS_CODE")
