@@ -4,14 +4,12 @@ from rest_framework.generics import GenericAPIView
 from rest_framework.views import APIView
 
 from apps.front_view import influencer_sync, models, serializers_get
+from apps.members.models import Member
 from base import responses
 from core import permissions
 
 
 class TermsPublicView(GenericAPIView):
-    """One category's terms, by category in the URL. Never 404s; a
-    category with no row yet just returns empty content."""
-
     serializer_class = serializers_get.SingleTermsAndConditionsSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -44,19 +42,24 @@ def mask_phone(phone):
 
 
 def stored_rows():
-    """The ranking from the newest successful sync, [] before the first."""
     run = influencer_sync.latest_run()
     if run is None:
         return []
-    return serializers_get.InfluencerSnapshotSerializer(
-        run.rows.all(), many=True,
-    ).data
+    rows = [
+        dict(row) for row in
+        serializers_get.InfluencerSnapshotSerializer(run.rows.all(), many=True).data
+    ]
+    names = dict(
+        Member.objects.filter(
+            archived=None, phone_number__in=[row["phone_number"] for row in rows],
+        ).values_list("phone_number", "full_name")
+    )
+    for row in rows:
+        row["full_name"] = names.get(row["phone_number"]) or row["full_name"]
+    return rows
 
 
 class InfluencerLeaderboardView(APIView):
-    """The real ranking as of the last sync (see influencer_sync). Nothing
-    here calls the third party."""
-
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
@@ -64,8 +67,6 @@ class InfluencerLeaderboardView(APIView):
 
 
 def merged_rows():
-    """Real ranking plus the admin's dummy influencers, best deposit first,
-    ranked from 1. Not trimmed and not masked."""
     real_rows = [dict(row) for row in stored_rows()]
     dummy_rows = [
         {
@@ -87,11 +88,6 @@ def merged_rows():
 
 
 class LeaderboardView(APIView):
-    """The public leaderboard: the top LEADERBOARD_SIZE of merged_rows.
-    Names show only the first and last character, phone numbers only the
-    last 4 digits.
-    """
-
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
@@ -107,7 +103,6 @@ class LeaderboardView(APIView):
 
 
 def rank_payload(rows, phone_number):
-    """The row for one phone with the gap to the rank above, or None."""
     index = next(
         (i for i, row in enumerate(rows) if row["phone_number"] == phone_number),
         None,
@@ -124,11 +119,6 @@ def rank_payload(rows, phone_number):
 
 
 class MyLeaderboardRankView(APIView):
-    """The signed-in member's own place on the public board (real plus dummy
-    influencers, so it matches what the board shows), with their stats and
-    the gap to the rank above. rank is null when they are not in the last
-    sync yet. Their own data, so nothing is masked."""
-
     permission_classes = [permissions.IsMember]
 
     def get(self, request, *args, **kwargs):
@@ -152,9 +142,6 @@ class MyLeaderboardRankView(APIView):
 
 
 class InfluencerRankView(APIView):
-    """Admin lookup of any member's place in the real (last synced) ranking
-    by phone, with the gap to the rank above."""
-
     permission_classes = [permissions.IsAdmin]
 
     def get(self, request, phone_number=None, *args, **kwargs):
