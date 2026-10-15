@@ -404,6 +404,17 @@ class MemberTask(TimeStampedModel):
         self.note = note
         self.save()
 
+    @property
+    def is_auto_approved(self):
+        return self.is_approved is True and self.reviewed_by_id is None
+
+    def auto_approve(self):
+        # no reviewer: reviewed_by stays empty to mark it as system-approved
+        self.reviewed_at = timezone.now()
+        self.is_approved = True
+        self.reject_reason = None
+        self.save()
+
     def review(self, admin, is_approved, reject_reason=None):
         self.reviewed_at = timezone.now()
         self.reviewed_by = admin

@@ -164,11 +164,22 @@ class SubmitTaskSerializer(serializers.Serializer):
     )
 
     def validate(self, attrs):
+        # proof is only mandatory while admin review is switched on
+        if not self.context.get("requires_review", True):
+            return attrs
         if not attrs.get("proof_link") and not attrs.get("proof_file"):
             raise serializers.ValidationError(
                 "Either a proof link or a proof file is required."
             )
         return attrs
+
+
+class MarkSubmittedSerializer(serializers.Serializer):
+    member_job_uuid = serializers.UUIDField()
+    period_key = serializers.CharField()
+    note = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True,
+    )
 
 
 class RejectTaskSerializer(serializers.Serializer):

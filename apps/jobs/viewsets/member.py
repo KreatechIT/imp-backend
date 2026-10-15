@@ -201,7 +201,12 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
     @extend_schema(request=serializers_create.SubmitTaskSerializer)
     @action(detail=True, methods=["post", "patch"])
     def submit(self, request, uuid=None, *args, **kwargs):
-        serializer = serializers_create.SubmitTaskSerializer(data=request.data)
+        settings_row = models.JobSettings.objects.first()
+        requires_review = settings_row.requires_review if settings_row else True
+
+        serializer = serializers_create.SubmitTaskSerializer(
+            data=request.data, context={"requires_review": requires_review},
+        )
         try:
             serializer.is_valid(raise_exception=True)
         except ValidationError as e:
@@ -223,7 +228,6 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
                 details="Task has already been submitted"
             ).get_response()
 
-        settings_row = models.JobSettings.objects.first()
         grace_hours = settings_row.submission_grace_hours if settings_row else 0
         deadline = timezone.make_aware(
             datetime.combine(task.period_end, time.max)
@@ -233,17 +237,22 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
                 details="Submission window has closed"
             ).get_response()
 
-        task.submit(
-            proof_link=validated_data.get("proof_link"),
-            proof_file=validated_data.get("proof_file"),
-            note=validated_data.get("note"),
-        )
+        with transaction.atomic():
+            task.submit(
+                proof_link=validated_data.get("proof_link"),
+                proof_file=validated_data.get("proof_file"),
+                note=validated_data.get("note"),
+            )
+            if not requires_review:
+                # auto-approved: stored for admins to spot-check later
+                task.auto_approve()
 
-        notifications.notify_admins(
-            notification_type=3,
-            title="New submission",
-            message=str(task.requirement),
-        )
+        if requires_review:
+            notifications.notify_admins(
+                notification_type=3,
+                title="New submission",
+                message=str(task.requirement),
+            )
 
         data = self.serializer_class(task, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()

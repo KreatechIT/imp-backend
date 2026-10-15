@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.serializers import ValidationError
 from rest_framework.viewsets import ReadOnlyModelViewSet
 
+from apps.earnings import helper_functions as earnings_helpers
 from apps.jobs import models, serializers_create, serializers_get
 from apps.notifications import helper_functions as notifications
 from base import responses
@@ -611,6 +612,76 @@ class SubmissionViewSet(ReadOnlyModelViewSet):
             uuid=uuid, member_job__job__uuid=self.kwargs.get("job_uuid"),
         ).first()
 
+    @action(detail=False, methods=["get"])
+    def missed(self, request, *args, **kwargs):
+        rows = earnings_helpers.job_missed_days(self.kwargs.get("job_uuid"))
+        data = serializers_get.MissedSubmissionSerializer(rows, many=True).data
+        return responses.SuccessResponse(data=data).get_response()
+
+    @extend_schema(request=serializers_create.MarkSubmittedSerializer)
+    @action(detail=False, methods=["post"], url_path="mark-submitted")
+    def mark_submitted(self, request, *args, **kwargs):
+        serializer = serializers_create.MarkSubmittedSerializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except ValidationError as e:
+            return responses.InvalidDataError(details=e.detail).get_response()
+        data = serializer.validated_data
+
+        missed = next(
+            (
+                row for row in earnings_helpers.job_missed_days(
+                    self.kwargs.get("job_uuid"),
+                )
+                if row["member_job_uuid"] == data["member_job_uuid"]
+                and row["period_key"] == data["period_key"]
+            ),
+            None,
+        )
+        if missed is None:
+            return responses.BadRequestError(
+                details="This period is not a missed day for the current month"
+            ).get_response()
+
+        member_job = models.MemberJob.objects.select_related(
+            "member__user", "job",
+        ).get(uuid=data["member_job_uuid"])
+        note = data.get("note") or "Marked as submitted by admin"
+        now = timezone.now()
+
+        with transaction.atomic():
+            for requirement in member_job.job.requirements.filter(archived=None):
+                task, _ = models.MemberTask.objects.get_or_create(
+                    member_job=member_job,
+                    requirement=requirement,
+                    period_key=missed["period_key"],
+                    defaults={
+                        "period_start": missed["period_start"],
+                        "period_end": missed["period_end"],
+                    },
+                )
+                if task.is_approved:
+                    continue
+                task.submitted_at = task.submitted_at or now
+                task.note = note
+                task.reviewed_at = now
+                task.reviewed_by = request.user.admin
+                task.is_approved = True
+                task.reject_reason = None
+                task.save()
+
+        notifications.notify(
+            recipient=member_job.member.user,
+            role=2,
+            notification_type=4,
+            title="Task approved",
+            message=f"{member_job.job.title} - {missed['period_key']}",
+        )
+
+        return responses.SuccessResponse(
+            data={"period_key": missed["period_key"]},
+        ).get_response()
+
     @action(detail=True, methods=["patch"])
     def approve(self, request, uuid=None, *args, **kwargs):
         task = self.get_task(uuid)
@@ -662,7 +733,8 @@ class SubmissionViewSet(ReadOnlyModelViewSet):
                 details="Task has not been submitted"
             ).get_response()
 
-        if task.reviewed_at:
+        # auto-approved tasks are still open to an admin spot-check
+        if task.reviewed_at and not task.is_auto_approved:
             return responses.BadRequestError(
                 details="Task has already been reviewed"
             ).get_response()

@@ -152,18 +152,35 @@ class MemberTaskSerializer(serializers.ModelSerializer):
     org_uuid = serializers.UUIDField(source="member_job.job.company.uuid")
     job_title = serializers.CharField(source="member_job.job.title")
     job_uuid = serializers.UUIDField(source="member_job.job.uuid")
+    job_description = serializers.CharField(
+        source="member_job.job.description", allow_null=True, allow_blank=True,
+    )
+    job_script = serializers.CharField(
+        source="member_job.job.script", allow_null=True, allow_blank=True,
+    )
     member_job_uuid = serializers.UUIDField(source="member_job.uuid")
     platform = serializers.IntegerField(source="requirement.platform")
     content_type = serializers.IntegerField(source="requirement.content_type")
     quantity = serializers.IntegerField(source="requirement.quantity")
     status = serializers.IntegerField()
     files = serializers.SerializerMethodField()
+    proof_required = serializers.SerializerMethodField()
+    is_auto_approved = serializers.BooleanField(read_only=True)
 
     def get_files(self, obj):
         queryset = obj.files.filter(archived=None).order_by("created")
         return TaskFileSerializer(
             queryset, many=True, context=self.context,
         ).data
+
+    def get_proof_required(self, obj):
+        # one settings lookup per serializer, not per row
+        if "proof_required" not in self.context:
+            settings_row = models.JobSettings.objects.first()
+            self.context["proof_required"] = (
+                settings_row.requires_review if settings_row else True
+            )
+        return self.context["proof_required"]
 
     class Meta:
         model = models.MemberTask
@@ -175,6 +192,8 @@ class MemberTaskSerializer(serializers.ModelSerializer):
             "org_uuid",
             "job_title",
             "job_uuid",
+            "job_description",
+            "job_script",
             "member_job_uuid",
             "platform",
             "content_type",
@@ -194,7 +213,30 @@ class MemberTaskSerializer(serializers.ModelSerializer):
             "metrics_screenshot",
             "metrics_submitted_at",
             "has_result",
+            "proof_required",
+            "is_auto_approved",
         ]
+
+
+class MissedRequirementSerializer(serializers.Serializer):
+    platform = serializers.IntegerField()
+    content_type = serializers.IntegerField()
+    quantity = serializers.IntegerField()
+
+
+class MissedSubmissionSerializer(serializers.Serializer):
+    member = serializers.CharField()
+    member_uuid = serializers.UUIDField()
+    username = serializers.CharField()
+    phone_number = serializers.CharField(allow_null=True, allow_blank=True)
+    member_job_uuid = serializers.UUIDField()
+    org = serializers.CharField()
+    job_title = serializers.CharField()
+    requirements = MissedRequirementSerializer(many=True)
+    deduction = serializers.DecimalField(max_digits=12, decimal_places=2)
+    period_key = serializers.CharField()
+    period_start = serializers.DateField()
+    period_end = serializers.DateField()
 
 
 class AvailableJobSerializer(JobSerializer):

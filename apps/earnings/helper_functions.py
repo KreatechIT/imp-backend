@@ -93,6 +93,43 @@ def member_jobs_in_range(member_uuid, from_date, to_date):
     return _member_jobs(from_date, to_date, [member_uuid])
 
 
+def job_missed_days(job_uuid, month_key=None):
+    _, from_date, to_date = month_bounds(month_key)
+    member_jobs = list(
+        _member_jobs(from_date, to_date)
+        .filter(job__uuid=job_uuid)
+        .select_related("member__user")
+    )
+    approved = _approved_requirements(member_jobs, from_date, to_date)
+
+    rows = []
+    for member_job in member_jobs:
+        missed, _ = period_results(
+            member_job, from_date, to_date, approved.get(member_job.id, {}),
+        )
+        job = member_job.job
+        requirements = [
+            {"platform": r.platform, "content_type": r.content_type, "quantity": r.quantity}
+            for r in job.requirements.all()
+        ]
+        for day in missed:
+            rows.append({
+                "member": member_job.member.full_name,
+                "member_uuid": member_job.member.uuid,
+                "username": member_job.member.user.username,
+                "phone_number": member_job.member.phone_number,
+                "member_job_uuid": member_job.uuid,
+                "org": job.company.name,
+                "job_title": job.title,
+                "requirements": requirements,
+                "deduction": job.deduction_per_miss or Decimal("0.00"),
+                **day,
+            })
+    rows.sort(key=lambda row: row["member"])
+    rows.sort(key=lambda row: row["period_start"], reverse=True)
+    return rows
+
+
 def _approved_requirements(member_jobs, from_date, to_date):
     rows = (
         job_models.MemberTask.objects
