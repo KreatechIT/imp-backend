@@ -106,3 +106,54 @@ class EarningsKpiSerializer(serializers.Serializer):
     missed_count = serializers.IntegerField()
     deduction = serializers.DecimalField(max_digits=14, decimal_places=2)
     total = serializers.DecimalField(max_digits=14, decimal_places=2)
+
+
+class JobPayoutSerializer(serializers.ModelSerializer):
+    member = serializers.SerializerMethodField()
+    member_uuid = serializers.UUIDField(source="member_job.member.uuid")
+    member_job_uuid = serializers.UUIDField(source="member_job.uuid")
+    org = serializers.CharField(source="member_job.job.company.name")
+    job_title = serializers.CharField(source="member_job.job.title")
+    job_end_date = serializers.DateTimeField(source="member_job.job.end_date")
+    reviewed_by = serializers.SerializerMethodField()
+
+    def get_member(self, obj):
+        member = obj.member_job.member
+        return member.full_name or member.user.username
+
+    def get_reviewed_by(self, obj):
+        if obj.reviewed_by is None:
+            return None
+        return obj.reviewed_by.user.username
+
+    class Meta:
+        model = models.JobPayout
+        fields = [
+            "uuid",
+            "member",
+            "member_uuid",
+            "member_job_uuid",
+            "org",
+            "job_title",
+            "job_end_date",
+            "amount",
+            "status",
+            "reject_reason",
+            "reviewed_by",
+            "reviewed_at",
+            "paid_at",
+            "created",
+        ]
+
+
+class PayoutJobSerializer(serializers.Serializer):
+    member_job_uuid = serializers.UUIDField()
+    org = serializers.CharField()
+    job_title = serializers.CharField()
+    end_date = serializers.DateTimeField()
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    can_request = serializers.BooleanField()
+    blocked_reason = serializers.CharField(allow_null=True)
+    payout_uuid = serializers.UUIDField(allow_null=True)
+    payout_status = serializers.IntegerField(allow_null=True)
+    reject_reason = serializers.CharField(allow_null=True)

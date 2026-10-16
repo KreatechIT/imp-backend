@@ -55,3 +55,11 @@ class EditPayoutSerializer(serializers.Serializer):
     note = serializers.CharField(
         required=False, allow_null=True, allow_blank=True,
     )
+
+
+class JobPayoutRequestSerializer(serializers.Serializer):
+    member_job_uuid = serializers.UUIDField(required=True)
+
+
+class RejectJobPayoutSerializer(serializers.Serializer):
+    reject_reason = serializers.CharField(required=True, allow_blank=False)

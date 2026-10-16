@@ -16,4 +16,8 @@ NOTIFICATION_TYPE_CHOICES = (
     (8, _("APPLICATION_REJECTED")),
     (9, _("RESULT_PENDING")),
     (10, _("RESULT_COMPLETED")),
+    (11, _("PAYOUT_REQUESTED")),
+    (12, _("PAYOUT_APPROVED")),
+    (13, _("PAYOUT_REJECTED")),
+    (14, _("PAYOUT_PAID")),
 )

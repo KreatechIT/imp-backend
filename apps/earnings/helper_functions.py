@@ -114,7 +114,7 @@ def job_missed_days(job_uuid, month_key=None):
         ]
         for day in missed:
             rows.append({
-                "member": member_job.member.full_name,
+                "member": member_job.member.full_name or member_job.member.user.username,
                 "member_uuid": member_job.member.uuid,
                 "username": member_job.member.user.username,
                 "phone_number": member_job.member.phone_number,
@@ -393,3 +393,70 @@ def earnings_kpi():
         "deduction": deduction,
         "total": total,
     }
+
+
+def job_payout_amount(member_job):
+    job = member_job.job
+    joined = member_start_date(member_job)
+    from_date = max(timezone.localtime(job.start_date).date(), joined)
+    to_date = timezone.localtime(job.end_date).date()
+    cycles = payment_cycles(job, from_date, to_date, joined)
+    missed, _ = period_results(member_job, from_date, to_date)
+    total = job.payment_amount * cycles - (
+        (job.deduction_per_miss or Decimal("0.00")) * len(missed)
+    )
+    return max(total, Decimal("0.00"))
+
+
+def job_has_ended(job):
+    return job.end_date is not None and job.end_date <= timezone.now()
+
+
+def payout_blocker(member_job):
+    if member_job.archived is not None or member_job.status not in (2, 3):
+        return "You are not an active member of this job"
+    if member_job.job.end_date is None:
+        return "This job has no end date, so payout cannot be requested"
+    if not job_has_ended(member_job.job):
+        return "Payout can only be requested after the job has ended"
+    if any(payout.status in (1, 2, 4) for payout in member_job.job_payouts.all()):
+        return "A payout has already been requested for this job"
+    if job_payout_amount(member_job) <= 0:
+        return "There is nothing to pay out for this job"
+    return None
+
+
+def member_payout_jobs(member_uuid):
+    member_jobs = (
+        job_models.MemberJob.objects
+        .filter(member__uuid=member_uuid, archived=None, status__in=[2, 3], job__archived=None)
+        .select_related("job__company", "member")
+        .prefetch_related(
+            Prefetch(
+                "job__requirements",
+                queryset=job_models.JobRequirement.objects.filter(archived=None),
+            ),
+            "job_payouts",
+        )
+        .order_by("-job__end_date", "-created")
+    )
+    rows = []
+    for member_job in member_jobs:
+        if member_job.job.end_date is None:
+            continue
+        payouts = sorted(member_job.job_payouts.all(), key=lambda p: (p.created, p.id), reverse=True)
+        latest = payouts[0] if payouts else None
+        blocker = payout_blocker(member_job)
+        rows.append({
+            "member_job_uuid": member_job.uuid,
+            "org": member_job.job.company.name,
+            "job_title": member_job.job.title,
+            "end_date": member_job.job.end_date,
+            "amount": latest.amount if latest else job_payout_amount(member_job),
+            "can_request": blocker is None,
+            "blocked_reason": blocker,
+            "payout_uuid": latest.uuid if latest else None,
+            "payout_status": latest.status if latest else None,
+            "reject_reason": latest.reject_reason if latest else None,
+        })
+    return rows
