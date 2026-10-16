@@ -1,3 +1,7 @@
+from datetime import timedelta
+
+from django.db.models import Q
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.serializers import ValidationError
@@ -316,6 +320,28 @@ class RenderedContentViewSet(ReadOnlyModelViewSet):
         rendered.delete()
 
         return responses.SuccessResponse(data={}).get_response()
+
+
+class MyRenderViewSet(ReadOnlyModelViewSet):
+    serializer_class = serializers_get.MyRenderSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardPagination
+    lookup_field = "uuid"
+    item_key = "Render Id"
+    keep_days = 7
+
+    def get_queryset(self):
+        since = timezone.now() - timedelta(days=self.keep_days)
+        return (
+            models.RenderedContent.objects
+            .filter(member__user=self.request.user, created__gte=since)
+            .exclude(
+                Q(render_status=2)
+                & (Q(rendered_file__isnull=True) | Q(rendered_file="")),
+            )
+            .select_related("frame__job__company")
+            .order_by("-created")
+        )
 
 
 class FrameRenderViewSet(ReadOnlyModelViewSet):

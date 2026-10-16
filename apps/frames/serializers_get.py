@@ -45,6 +45,28 @@ class RenderedContentSerializer(serializers.ModelSerializer):
         ]
 
 
+class MyRenderSerializer(serializers.ModelSerializer):
+    org = serializers.CharField(source="frame.job.company.name")
+    job_title = serializers.CharField(source="frame.job.title")
+    frame_uuid = serializers.UUIDField(source="frame.uuid")
+    frame_name = serializers.CharField(source="frame.name")
+
+    class Meta:
+        model = models.RenderedContent
+        fields = [
+            "uuid",
+            "org",
+            "job_title",
+            "frame_uuid",
+            "frame_name",
+            "media_type",
+            "original_name",
+            "render_status",
+            "rendered_file",
+            "created",
+        ]
+
+
 class FrameSerializer(serializers.ModelSerializer):
     job_uuid = serializers.UUIDField(source="job.uuid")
     job_title = serializers.CharField(source="job.title")

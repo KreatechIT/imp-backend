@@ -29,6 +29,9 @@ library_router.register(
     "content", viewsets.RenderedContentViewSet, basename="frame-content",
 )
 library_router.register(
+    "my-renders", viewsets.MyRenderViewSet, basename="my-renders",
+)
+library_router.register(
     r'(?P<frame_uuid>[^/.]+)/render', viewsets.FrameRenderViewSet, basename="frame-render",
 )
 library_router.register(
