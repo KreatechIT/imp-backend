@@ -169,10 +169,17 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
     lookup_field = "uuid"
     item_key = "Task Id"
 
+    def owned(self, queryset):
+        queryset = queryset.filter(
+            member_job__member__uuid=self.kwargs.get("member_uuid"),
+        )
+        if self.request.user.is_admin:
+            return queryset
+        return queryset.filter(member_job__member__user=self.request.user)
+
     def get_queryset(self):
         queryset = (
-            models.MemberTask.objects
-            .filter(member_job__member__uuid=self.kwargs.get("member_uuid"))
+            self.owned(models.MemberTask.objects)
             .select_related(
                 "member_job__member__user",
                 "member_job__job__company",
@@ -191,6 +198,14 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="today")
     def today(self, request, *args, **kwargs):
+        is_owner = Member.objects.filter(
+            uuid=self.kwargs.get("member_uuid"), user=request.user,
+        ).exists()
+        if not is_owner and not request.user.is_admin:
+            return responses.MissingItemError(
+                item_key="Member Id", item_id=self.kwargs.get("member_uuid"),
+            ).get_response()
+
         queryset = helper_functions.ensure_today_tasks(
             self.kwargs.get("member_uuid")
         )
@@ -214,10 +229,7 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
         validated_data = serializer.validated_data
 
         try:
-            task = models.MemberTask.objects.get(
-                uuid=uuid,
-                member_job__member__uuid=self.kwargs.get("member_uuid"),
-            )
+            task = self.owned(models.MemberTask.objects).get(uuid=uuid)
         except models.MemberTask.DoesNotExist:
             return responses.MissingItemError(
                 item_key=self.item_key, item_id=uuid,
@@ -258,9 +270,7 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
         return responses.SuccessResponse(data=data).get_response()
 
     def get_task(self, uuid):
-        return models.MemberTask.objects.filter(
-            uuid=uuid, member_job__member__uuid=self.kwargs.get("member_uuid"),
-        ).first()
+        return self.owned(models.MemberTask.objects).filter(uuid=uuid).first()
 
     @extend_schema(request=serializers_create.TaskContentSerializer)
     @action(detail=True, methods=["post"])
@@ -333,7 +343,18 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
                 details="Submit the task before reporting its result"
             ).get_response()
 
+        if task.result_locked:
+            return responses.BadRequestError(
+                details="This result has already been approved"
+            ).get_response()
+
         task.submit_result(**serializer.validated_data)
+
+        notifications.notify_admins(
+            notification_type=15,
+            title="New result submitted",
+            message=f"{task.member_job.job.title} - {task.period_key}",
+        )
 
         still_pending = task.member_job.tasks.filter(
             submitted_at__isnull=False, metrics_submitted_at__isnull=True,

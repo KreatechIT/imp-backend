@@ -778,12 +778,21 @@ class ResultViewSet(ReadOnlyModelViewSet):
                 ),
                 distinct=True,
             ),
-        ).filter(pending_result_count__gt=0)
+            review_count=Count(
+                "tasks",
+                filter=Q(
+                    tasks__metrics_submitted_at__isnull=False,
+                    tasks__result_status=1,
+                ),
+                distinct=True,
+            ),
+        ).filter(Q(pending_result_count__gt=0) | Q(review_count__gt=0))
 
         data = [
             {
                 "member_uuid": str(member_job.member.uuid),
                 "pending_result_count": member_job.pending_result_count,
+                "review_count": member_job.review_count,
             }
             for member_job in queryset.select_related("member")
         ]
@@ -820,6 +829,91 @@ class ResultViewSet(ReadOnlyModelViewSet):
                     request.build_absolute_uri(task.metrics_screenshot.url)
                     if task.metrics_screenshot else None
                 )
+                row["metrics_views"] = task.metrics_views
+                row["metrics_submitted_at"] = task.metrics_submitted_at
+                row["result_status"] = task.result_status
+                row["result_reject_reason"] = task.result_reject_reason
+                row["period_start"] = task.period_start
             rows.append(row)
 
         return responses.SuccessResponse(data={"tasks": rows}).get_response()
+
+    def get_result_task(self, task_uuid):
+        return (
+            models.MemberTask.objects
+            .select_for_update(of=("self",))
+            .select_related("member_job__member__user", "member_job__job")
+            .filter(
+                uuid=task_uuid,
+                member_job__job__uuid=self.kwargs.get("job_uuid"),
+                metrics_submitted_at__isnull=False,
+            )
+            .first()
+        )
+
+    @action(
+        detail=False, methods=["patch"],
+        url_path=r"task/(?P<task_uuid>[^/.]+)/approve",
+    )
+    def approve(self, request, task_uuid=None, *args, **kwargs):
+        with transaction.atomic():
+            task = self.get_result_task(task_uuid)
+            if task is None:
+                return responses.MissingItemError(
+                    item_key="Task Id", item_id=task_uuid,
+                ).get_response()
+            if task.result_status != 1:
+                return responses.BadRequestError(
+                    details="Only a pending result can be approved"
+                ).get_response()
+
+            task.review_result(request.user.admin, is_approved=True)
+            notifications.notify(
+                recipient=task.member_job.member.user,
+                role=2,
+                notification_type=16,
+                title="Result approved",
+                message=f"{task.member_job.job.title} - {task.period_key}",
+            )
+        return responses.SuccessResponse(
+            data={"uuid": str(task.uuid), "result_status": task.result_status},
+        ).get_response()
+
+    @extend_schema(request=serializers_create.RejectTaskSerializer)
+    @action(
+        detail=False, methods=["patch"],
+        url_path=r"task/(?P<task_uuid>[^/.]+)/reject",
+    )
+    def reject(self, request, task_uuid=None, *args, **kwargs):
+        serializer = serializers_create.RejectTaskSerializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except ValidationError as e:
+            return responses.InvalidDataError(details=e.detail).get_response()
+
+        with transaction.atomic():
+            task = self.get_result_task(task_uuid)
+            if task is None:
+                return responses.MissingItemError(
+                    item_key="Task Id", item_id=task_uuid,
+                ).get_response()
+            if task.result_status != 1:
+                return responses.BadRequestError(
+                    details="Only a pending result can be rejected"
+                ).get_response()
+
+            task.review_result(
+                request.user.admin,
+                is_approved=False,
+                reject_reason=serializer.validated_data["reject_reason"],
+            )
+            notifications.notify(
+                recipient=task.member_job.member.user,
+                role=2,
+                notification_type=17,
+                title="Result rejected",
+                message=task.result_reject_reason,
+            )
+        return responses.SuccessResponse(
+            data={"uuid": str(task.uuid), "result_status": task.result_status},
+        ).get_response()

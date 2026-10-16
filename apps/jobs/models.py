@@ -354,6 +354,20 @@ class MemberTask(TimeStampedModel):
         validators=[encryption.validate_file_size],
     )
     metrics_submitted_at = models.DateTimeField(blank=True, null=True)
+    metrics_views = models.PositiveBigIntegerField(blank=True, null=True)
+    result_status = models.IntegerField(
+        choices=choices.RESULT_STATUS_CHOICES, blank=True, null=True,
+    )
+    result_reviewed_at = models.DateTimeField(blank=True, null=True)
+    result_reviewed_by = models.ForeignKey(
+        Admin,
+        verbose_name=_("Result Reviewed By"),
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_results",
+    )
+    result_reject_reason = models.TextField(blank=True, null=True)
 
     class Meta:
         constraints = [
@@ -431,6 +445,21 @@ class MemberTask(TimeStampedModel):
             if value is not None:
                 setattr(self, key, value)
         self.metrics_submitted_at = timezone.now()
+        self.result_status = 1
+        self.result_reviewed_at = None
+        self.result_reviewed_by = None
+        self.result_reject_reason = None
+        self.save()
+
+    @property
+    def result_locked(self):
+        return self.result_status == 2
+
+    def review_result(self, admin, is_approved, reject_reason=None):
+        self.result_status = 2 if is_approved else 3
+        self.result_reviewed_at = timezone.now()
+        self.result_reviewed_by = admin
+        self.result_reject_reason = None if is_approved else reject_reason
         self.save()
 
 

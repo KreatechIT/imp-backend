@@ -36,6 +36,12 @@ CONTENT_TYPE_CHOICES = (
     (4, _("VIDEO")),
 )
 
+RESULT_STATUS_CHOICES = (
+    (1, _("PENDING")),
+    (2, _("APPROVED")),
+    (3, _("REJECTED")),
+)
+
 MEMBER_JOB_STATUS_CHOICES = (
     (1, _("APPLIED")),
     (2, _("ACTIVE")),

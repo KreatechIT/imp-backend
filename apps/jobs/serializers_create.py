@@ -211,6 +211,12 @@ class TaskContentSerializer(serializers.Serializer):
 
 
 class TaskResultSerializer(serializers.Serializer):
-    """How the post performed, via a metrics screenshot."""
+    metrics_screenshot = serializers.FileField(required=False)
+    metrics_views = serializers.IntegerField(required=False, min_value=0)
 
-    metrics_screenshot = serializers.FileField(required=True)
+    def validate(self, attrs):
+        if not attrs:
+            raise serializers.ValidationError(
+                "Send a view count, a screenshot, or both."
+            )
+        return attrs
