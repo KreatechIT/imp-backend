@@ -242,6 +242,23 @@ class MissedSubmissionSerializer(serializers.Serializer):
     period_end = serializers.DateField()
 
 
+class JobMemberSerializer(MemberJobSerializer):
+    result_views = serializers.SerializerMethodField()
+    results_to_review = serializers.SerializerMethodField()
+
+    def get_result_views(self, obj):
+        return getattr(obj, "result_views", 0) or 0
+
+    def get_results_to_review(self, obj):
+        return getattr(obj, "results_to_review", 0) or 0
+
+    class Meta(MemberJobSerializer.Meta):
+        fields = MemberJobSerializer.Meta.fields + [
+            "result_views",
+            "results_to_review",
+        ]
+
+
 class AvailableJobSerializer(JobSerializer):
     is_applied = serializers.SerializerMethodField()
 
