@@ -1,5 +1,5 @@
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
@@ -351,7 +351,7 @@ class JobRequirementViewSet(OrgScopedMixin, ReadOnlyModelViewSet):
 
 
 class JobMemberViewSet(OrgScopedMixin, ReadOnlyModelViewSet):
-    serializer_class = serializers_get.MemberJobSerializer
+    serializer_class = serializers_get.JobMemberSerializer
     permission_classes = [permissions.IsAdmin]
     pagination_class = StandardPagination
     lookup_field = "uuid"
@@ -366,6 +366,19 @@ class JobMemberViewSet(OrgScopedMixin, ReadOnlyModelViewSet):
                 archived=None,
             )
             .select_related("member__user", "job__company")
+            .annotate(
+                result_views=Sum(
+                    "tasks__metrics_views",
+                    filter=Q(tasks__result_status=2),
+                ),
+                results_to_review=Count(
+                    "tasks",
+                    filter=Q(
+                        tasks__metrics_submitted_at__isnull=False,
+                        tasks__result_status=1,
+                    ),
+                ),
+            )
             .order_by("-created")
         )
 
