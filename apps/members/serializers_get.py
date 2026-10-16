@@ -19,7 +19,7 @@ class BankDetailSerializer(serializers.ModelSerializer):
 class AdminBankDetailSerializer(BankDetailSerializer):
     """What an admin sees when checking who to pay."""
 
-    member = serializers.CharField(source="member.full_name")
+    member = serializers.CharField(source="member.display_name")
     member_uuid = serializers.UUIDField(source="member.uuid")
     username = serializers.CharField(source="member.user.username")
 

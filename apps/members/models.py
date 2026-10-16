@@ -70,6 +70,10 @@ class Member(TimeStampedModel):
         ]
 
     def __str__(self):
+        return self.display_name
+
+    @property
+    def display_name(self):
         return self.full_name or self.user.username
 
     def archive(self):

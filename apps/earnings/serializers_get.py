@@ -4,7 +4,7 @@ from apps.earnings import models
 
 
 class PayoutSerializer(serializers.ModelSerializer):
-    member = serializers.CharField(source="member.full_name")
+    member = serializers.CharField(source="member.display_name")
     member_uuid = serializers.UUIDField(source="member.uuid")
     status = serializers.IntegerField()
 
