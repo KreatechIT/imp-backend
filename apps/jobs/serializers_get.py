@@ -148,6 +148,7 @@ class TaskFileSerializer(serializers.ModelSerializer):
 class MemberTaskSerializer(serializers.ModelSerializer):
     member = serializers.CharField(source="member_job.member.display_name")
     member_uuid = serializers.UUIDField(source="member_job.member.uuid")
+    username = serializers.CharField(source="member_job.member.user.username")
     org = serializers.CharField(source="member_job.job.company.name")
     org_uuid = serializers.UUIDField(source="member_job.job.company.uuid")
     job_title = serializers.CharField(source="member_job.job.title")
@@ -189,6 +190,7 @@ class MemberTaskSerializer(serializers.ModelSerializer):
             "uuid",
             "member",
             "member_uuid",
+            "username",
             "org",
             "org_uuid",
             "job_title",
