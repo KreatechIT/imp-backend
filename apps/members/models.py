@@ -47,6 +47,18 @@ class Member(TimeStampedModel):
         blank=True,
         null=True,
     )
+    instagram_url = models.CharField(
+        verbose_name=_("Instagram Profile Link"),
+        max_length=500,
+        blank=True,
+        null=True,
+    )
+    facebook_url = models.CharField(
+        verbose_name=_("Facebook Profile Link"),
+        max_length=500,
+        blank=True,
+        null=True,
+    )
     profile_picture = ImageField(
         verbose_name=_("Profile Picture"),
         blank=True,

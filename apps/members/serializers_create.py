@@ -15,6 +15,12 @@ class MemberSerializer(serializers.Serializer):
         required=False, allow_null=True, allow_blank=True,
     )
     date_of_birth = serializers.DateField(required=False, allow_null=True)
+    instagram_url = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, max_length=500,
+    )
+    facebook_url = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, max_length=500,
+    )
     status = serializers.ChoiceField(
         choices=choices.MEMBER_STATUS_CHOICES, default=1,
     )
@@ -46,6 +52,12 @@ class EditMemberSerializer(serializers.Serializer):
         required=False, allow_null=True, allow_blank=True,
     )
     date_of_birth = serializers.DateField(required=False, allow_null=True)
+    instagram_url = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, max_length=500,
+    )
+    facebook_url = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, max_length=500,
+    )
     status = serializers.ChoiceField(
         choices=choices.MEMBER_STATUS_CHOICES, required=False,
     )
@@ -61,6 +73,12 @@ class EditMemberSerializer(serializers.Serializer):
 
 class EditProfileSerializer(serializers.Serializer):
     full_name = serializers.CharField(required=False)
+    instagram_url = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, max_length=500,
+    )
+    facebook_url = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, max_length=500,
+    )
     profile_picture = serializers.ImageField(required=False, allow_null=True)
 
 

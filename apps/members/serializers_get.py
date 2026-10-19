@@ -73,6 +73,8 @@ class MemberSerializer(serializers.ModelSerializer):
             "phone_number",
             "email",
             "date_of_birth",
+            "instagram_url",
+            "facebook_url",
             "profile_picture",
             "status",
             "joined",
