@@ -159,6 +159,7 @@ class MemberTaskSerializer(serializers.ModelSerializer):
         source="member_job.job.script", allow_null=True, allow_blank=True,
     )
     member_job_uuid = serializers.UUIDField(source="member_job.uuid")
+    affiliate_link = serializers.URLField(source="member_job.affiliate_link", allow_null=True)
     platform = serializers.IntegerField(source="requirement.platform")
     content_type = serializers.IntegerField(source="requirement.content_type")
     quantity = serializers.IntegerField(source="requirement.quantity")
@@ -195,6 +196,7 @@ class MemberTaskSerializer(serializers.ModelSerializer):
             "job_description",
             "job_script",
             "member_job_uuid",
+            "affiliate_link",
             "platform",
             "content_type",
             "quantity",
