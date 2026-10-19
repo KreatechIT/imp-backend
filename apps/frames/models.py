@@ -132,6 +132,7 @@ class RenderedContent(TimeStampedModel):
     crop_height = models.PositiveIntegerField(blank=True, null=True)
     trim_in = models.FloatField(blank=True, null=True)
     trim_out = models.FloatField(blank=True, null=True)
+    downloaded_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
         indexes = [

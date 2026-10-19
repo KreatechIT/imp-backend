@@ -1,14 +1,18 @@
 import os
 import subprocess
 import tempfile
+from datetime import timedelta
 from uuid import uuid4
 
 from celery import shared_task
 from django.core.files import File
+from django.utils import timezone
 
 from apps.notifications import helper_functions as notifications
 
 STRETCH_TO_FRAME = "scale2ref=w=trunc(iw/2)*2:h=trunc(ih/2)*2[content][frame]"
+
+DOWNLOAD_GRACE_HOURS = 6
 
 MAX_CANVAS_LONG_EDGE = 1920
 MAX_CANVAS_SHORT_EDGE = 1080
@@ -178,6 +182,7 @@ def render_content(rendered_content_id):
                 "-filter_complex",
                 f"{scale_to_frame};[content][frame]overlay=0:0:shortest=1",
                 "-c:v", "libx264", "-preset", "medium", "-crf", "26",
+                "-movflags", "+faststart",
                 "-pix_fmt", "yuv420p",
                 out_path,
             ]
@@ -232,3 +237,17 @@ def render_content(rendered_content_id):
         title="Your framed content is ready",
         message=frame.name,
     )
+
+
+@shared_task
+def purge_downloaded_renders():
+    from apps.frames.models import RenderedContent
+
+    cutoff = timezone.now() - timedelta(hours=DOWNLOAD_GRACE_HOURS)
+    stale = RenderedContent.objects.filter(
+        downloaded_at__lt=cutoff,
+    ).exclude(rendered_file="").exclude(rendered_file__isnull=True)
+    for rendered in stale:
+        rendered.rendered_file.delete(save=False)
+        rendered.rendered_file = None
+        rendered.save(update_fields=["rendered_file"])

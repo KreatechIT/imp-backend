@@ -32,6 +32,7 @@ class RenderedContentSerializer(serializers.ModelSerializer):
             "frame_name",
             "original_file",
             "rendered_file",
+            "downloaded_at",
             "media_type",
             "original_name",
             "render_status",
@@ -63,6 +64,7 @@ class MyRenderSerializer(serializers.ModelSerializer):
             "original_name",
             "render_status",
             "rendered_file",
+            "downloaded_at",
             "created",
         ]
 

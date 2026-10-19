@@ -25,6 +25,10 @@ app.conf.beat_schedule = {
         "task": "apps.jobs.tasks.send_pending_result_reminders",
         "schedule": crontab(hour=9, minute=0),
     },
+    "purge-downloaded-renders": {
+        "task": "apps.frames.tasks.purge_downloaded_renders",
+        "schedule": crontab(minute=15),
+    },
 }
 
 # Crontabs are evaluated in CELERY_TIMEZONE (Asia/Kuala_Lumpur). The times

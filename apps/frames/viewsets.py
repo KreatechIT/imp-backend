@@ -420,10 +420,12 @@ class FrameRenderViewSet(ReadOnlyModelViewSet):
                 item_key=self.item_key, item_id=uuid,
             ).get_response()
 
-        if rendered.rendered_file:
-            rendered.rendered_file.delete(save=False)
-            rendered.rendered_file = None
-            rendered.save()
+        # The file is kept for DOWNLOAD_GRACE_HOURS so a download that did
+        # not actually reach the phone can be retried; purge_downloaded_renders
+        # removes it afterwards.
+        if rendered.downloaded_at is None:
+            rendered.downloaded_at = timezone.now()
+            rendered.save(update_fields=["downloaded_at"])
 
         data = self.serializer_class(rendered, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()
