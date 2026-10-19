@@ -6,6 +6,7 @@ from rest_framework.viewsets import ReadOnlyModelViewSet
 
 from apps.earnings import models, serializers_create, serializers_get
 from apps.members.models import Member
+from apps.notifications import helper_functions as notifications
 from base import responses
 from core import permissions
 from core.pagination import StandardPagination
@@ -32,10 +33,12 @@ class PayoutViewSet(ReadOnlyModelViewSet):
             queryset = queryset.filter(member__uuid=member_uuid)
         if period_key:
             queryset = queryset.filter(period_key=period_key)
-        if status == "2":
-            queryset = queryset.exclude(paid_at=None)
+        if status == "3":
+            queryset = queryset.exclude(rejected_at=None)
+        elif status == "2":
+            queryset = queryset.filter(rejected_at=None).exclude(paid_at=None)
         elif status == "1":
-            queryset = queryset.filter(paid_at=None)
+            queryset = queryset.filter(paid_at=None, rejected_at=None)
         return queryset.order_by("-period_key", "-created")
 
     @extend_schema(request=serializers_create.PayoutSerializer)
@@ -111,7 +114,45 @@ class PayoutViewSet(ReadOnlyModelViewSet):
                 details="Payout has already been marked paid"
             ).get_response()
 
+        if payout.rejected_at:
+            return responses.BadRequestError(
+                details="A rejected payout cannot be marked paid"
+            ).get_response()
+
         payout.mark_paid()
+
+        data = self.serializer_class(payout, context={"request": self.request}).data
+        return responses.SuccessResponse(data=data).get_response()
+
+    @extend_schema(request=serializers_create.RejectPayoutSerializer)
+    @action(detail=True, methods=["patch"])
+    def reject(self, request, uuid=None, *args, **kwargs):
+        serializer = serializers_create.RejectPayoutSerializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except ValidationError as e:
+            return responses.InvalidDataError(details=e.detail).get_response()
+
+        with transaction.atomic():
+            payout = self.get_payout(uuid)
+            if payout is None:
+                return responses.MissingItemError(
+                    item_key=self.item_key, item_id=uuid,
+                ).get_response()
+
+            if payout.status != 1:
+                return responses.BadRequestError(
+                    details="Only a pending payout can be rejected"
+                ).get_response()
+
+            payout.reject(serializer.validated_data["reject_reason"])
+            notifications.notify(
+                recipient=payout.member.user,
+                role=2,
+                notification_type=13,
+                title="Payout rejected",
+                message=payout.period_key,
+            )
 
         data = self.serializer_class(payout, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()

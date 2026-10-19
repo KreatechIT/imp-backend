@@ -19,6 +19,8 @@ class PayoutSerializer(serializers.ModelSerializer):
             "note",
             "status",
             "paid_at",
+            "rejected_at",
+            "reject_reason",
             "created",
         ]
 

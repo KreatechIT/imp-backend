@@ -30,13 +30,15 @@ class Payout(TimeStampedModel):
     )
     note = models.TextField(blank=True, null=True)
     paid_at = models.DateTimeField(blank=True, null=True)
+    rejected_at = models.DateTimeField(blank=True, null=True)
+    reject_reason = models.TextField(blank=True, null=True)
     archived = models.DateTimeField(blank=True, null=True)
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
                 fields=["member", "period_key"],
-                condition=models.Q(archived__isnull=True),
+                condition=models.Q(archived__isnull=True, rejected_at__isnull=True),
                 name="unique_active_payout_per_period",
             ),
         ]
@@ -59,6 +61,8 @@ class Payout(TimeStampedModel):
 
     @property
     def status(self):
+        if self.rejected_at:
+            return 3
         return 2 if self.paid_at else 1
 
     @property
@@ -67,6 +71,11 @@ class Payout(TimeStampedModel):
 
     def mark_paid(self):
         self.paid_at = timezone.now()
+        self.save()
+
+    def reject(self, reason):
+        self.rejected_at = timezone.now()
+        self.reject_reason = reason
         self.save()
 
 

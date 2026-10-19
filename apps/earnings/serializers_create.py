@@ -61,5 +61,9 @@ class JobPayoutRequestSerializer(serializers.Serializer):
     member_job_uuid = serializers.UUIDField(required=True)
 
 
+class RejectPayoutSerializer(serializers.Serializer):
+    reject_reason = serializers.CharField(required=True, allow_blank=False)
+
+
 class RejectJobPayoutSerializer(serializers.Serializer):
     reject_reason = serializers.CharField(required=True, allow_blank=False)
