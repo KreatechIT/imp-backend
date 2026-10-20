@@ -41,7 +41,7 @@ def mask_phone(phone):
     return "*" * (len(phone) - 4) + phone[-4:]
 
 
-def stored_rows():
+def stored_rows(include_username=False):
     run = influencer_sync.latest_run()
     if run is None:
         return []
@@ -49,13 +49,18 @@ def stored_rows():
         dict(row) for row in
         serializers_get.InfluencerSnapshotSerializer(run.rows.all(), many=True).data
     ]
-    names = dict(
-        Member.objects.filter(
+    members = {
+        phone: (full_name, username)
+        for phone, full_name, username in Member.objects.filter(
             archived=None, phone_number__in=[row["phone_number"] for row in rows],
-        ).values_list("phone_number", "full_name")
-    )
+        ).values_list("phone_number", "full_name", "user__username")
+    }
     for row in rows:
-        row["full_name"] = names.get(row["phone_number"]) or row["full_name"]
+        full_name, username = members.get(row["phone_number"], (None, None))
+        row["full_name"] = full_name or row["full_name"]
+        # Admin view only; the public leaderboard never exposes usernames.
+        if include_username:
+            row["username"] = username
     return rows
 
 
@@ -63,7 +68,7 @@ class InfluencerLeaderboardView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
-        return responses.SuccessResponse(data=stored_rows()).get_response()
+        return responses.SuccessResponse(data=stored_rows(include_username=True)).get_response()
 
 
 def merged_rows():

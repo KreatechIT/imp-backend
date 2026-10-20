@@ -156,10 +156,22 @@ class AvailableJobViewSet(ReadOnlyModelViewSet):
                 error_message="Already applied to this job",
             ).get_response()
 
+        notifications.notify_admins(
+            notification_type=18,
+            title="New job application",
+            message=f"{member.display_name} (@{member.user.username}) applied to {job.title}",
+        )
+
         data = serializers_get.MemberJobSerializer(
             member_job, context={"request": self.request},
         ).data
         return responses.CreatedSuccessResponse(data=data).get_response()
+
+
+def member_label(task):
+    """'Full Name (@username)' for admin notifications."""
+    member = task.member_job.member
+    return f"{member.display_name} (@{member.user.username})"
 
 
 class MemberTaskViewSet(ReadOnlyModelViewSet):
@@ -263,7 +275,7 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
             notifications.notify_admins(
                 notification_type=3,
                 title="New submission",
-                message=str(task.requirement),
+                message=f"{member_label(task)} - {task.requirement}",
             )
 
         data = self.serializer_class(task, context={"request": self.request}).data
@@ -353,7 +365,7 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
         notifications.notify_admins(
             notification_type=15,
             title="New result submitted",
-            message=f"{task.member_job.job.title} - {task.period_key}",
+            message=f"{member_label(task)} - {task.member_job.job.title} - {task.period_key}",
         )
 
         still_pending = task.member_job.tasks.filter(

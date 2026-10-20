@@ -218,7 +218,7 @@ class MemberJobPayoutViewSet(GenericViewSet):
         notifications.notify_admins(
             notification_type=11,
             title="Payout requested",
-            message=f"{member.full_name or member.user.username} - {member_job.job.title}",
+            message=f"{member.display_name} (@{member.user.username}) - {member_job.job.title}",
         )
 
         data = self.serializer_class(payout, context={"request": self.request}).data
