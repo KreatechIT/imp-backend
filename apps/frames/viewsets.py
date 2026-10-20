@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
@@ -407,7 +408,7 @@ class FrameRenderViewSet(ReadOnlyModelViewSet):
 
         from apps.frames.tasks import render_content
 
-        render_content.delay(rendered.id)
+        transaction.on_commit(lambda: render_content.delay(rendered.id))
 
         data = self.serializer_class(rendered, context={"request": self.request}).data
         return responses.CreatedSuccessResponse(data=data).get_response()

@@ -362,12 +362,6 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
 
         task.submit_result(**serializer.validated_data)
 
-        notifications.notify_admins(
-            notification_type=15,
-            title="New result submitted",
-            message=f"{member_label(task)} - {task.member_job.job.title} - {task.period_key}",
-        )
-
         still_pending = task.member_job.tasks.filter(
             submitted_at__isnull=False, metrics_submitted_at__isnull=True,
         ).exists()

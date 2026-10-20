@@ -799,13 +799,21 @@ class ResultViewSet(ReadOnlyModelViewSet):
                 ),
                 distinct=True,
             ),
-        ).filter(Q(pending_result_count__gt=0) | Q(review_count__gt=0))
+            approved_count=Count(
+                "tasks", filter=Q(tasks__result_status=2), distinct=True,
+            ),
+        ).filter(
+            Q(pending_result_count__gt=0)
+            | Q(review_count__gt=0)
+            | Q(approved_count__gt=0)
+        )
 
         data = [
             {
                 "member_uuid": str(member_job.member.uuid),
                 "pending_result_count": member_job.pending_result_count,
                 "review_count": member_job.review_count,
+                "approved_count": member_job.approved_count,
             }
             for member_job in queryset.select_related("member")
         ]
@@ -845,6 +853,7 @@ class ResultViewSet(ReadOnlyModelViewSet):
                 row["metrics_views"] = task.metrics_views
                 row["metrics_submitted_at"] = task.metrics_submitted_at
                 row["result_status"] = task.result_status
+                row["result_auto_approved"] = task.is_result_auto_approved
                 row["result_reject_reason"] = task.result_reject_reason
                 row["period_start"] = task.period_start
             rows.append(row)
@@ -910,9 +919,10 @@ class ResultViewSet(ReadOnlyModelViewSet):
                 return responses.MissingItemError(
                     item_key="Task Id", item_id=task_uuid,
                 ).get_response()
-            if task.result_status != 1:
+            # Auto-approved results can still be rejected as a spot check.
+            if task.result_status != 1 and not task.is_result_auto_approved:
                 return responses.BadRequestError(
-                    details="Only a pending result can be rejected"
+                    details="Only a pending or auto-approved result can be rejected"
                 ).get_response()
 
             task.review_result(

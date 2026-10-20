@@ -444,12 +444,18 @@ class MemberTask(TimeStampedModel):
         for key, value in metrics.items():
             if value is not None:
                 setattr(self, key, value)
+        # Results are approved on submission; admins spot-check them afterwards.
+        # No reviewer is recorded, which marks the result as system-approved.
         self.metrics_submitted_at = timezone.now()
-        self.result_status = 1
-        self.result_reviewed_at = None
+        self.result_status = 2
+        self.result_reviewed_at = timezone.now()
         self.result_reviewed_by = None
         self.result_reject_reason = None
         self.save()
+
+    @property
+    def is_result_auto_approved(self):
+        return self.result_status == 2 and self.result_reviewed_by_id is None
 
     @property
     def result_locked(self):

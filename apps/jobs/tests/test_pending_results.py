@@ -252,3 +252,73 @@ class AdminResultAPITest(BaseAPITestCase):
         self.authenticate(self.member.user)
         response = self.client.get(f"/jobs/job/{self.job.uuid}/result/pending/")
         assert response.status_code == 403
+
+
+class AutoApprovedResultsAPITest(BaseAPITestCase):
+    """Results approve themselves on submission; admins spot-check afterwards."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin = admin_models.Admin.objects.create(user=self.user, full_name="Base Admin")
+
+        member_user = UserModel.objects.create(username="member_one")
+        self.member = Member.objects.create(user=member_user, full_name="Member One")
+
+        company = models.Company.objects.create(name="KGAME99")
+        self.job = models.Job.objects.create(
+            company=company,
+            title="Daily Posting Job",
+            start_date=timezone.now() - timedelta(days=10),
+        )
+        requirement = models.JobRequirement.objects.create(
+            job=self.job, platform=1, content_type=2, quantity=1,
+        )
+        member_job = models.MemberJob.objects.create(member=self.member, job=self.job)
+        today = timezone.localdate()
+        self.task_pending = models.MemberTask.objects.create(
+            member_job=member_job, requirement=requirement,
+            period_key="d2", period_start=today - timedelta(days=2),
+            period_end=today - timedelta(days=2),
+            submitted_at=timezone.now(), proof_link="https://instagram.com/p/2",
+        )
+
+    def submit_result(self):
+        self.authenticate(self.member.user)
+        response = self.client.post(
+            f"/members/{self.member.uuid}/tasks/{self.task_pending.uuid}/result/",
+            data={"metrics_screenshot": SimpleUploadedFile("shot.jpg", b"data")},
+        )
+        assert response.status_code == 200
+        self.task_pending.refresh_from_db()
+
+    def test_submitted_result_is_approved_without_a_reviewer(self):
+        self.submit_result()
+        assert self.task_pending.result_status == 2
+        assert self.task_pending.result_reviewed_by is None
+        assert self.task_pending.is_result_auto_approved
+
+    def test_admins_are_not_notified_of_auto_approved_results(self):
+        self.submit_result()
+        assert not Notification.objects.filter(notification_type=15).exists()
+
+    def test_admin_can_spot_check_reject_an_auto_approved_result(self):
+        self.submit_result()
+
+        self.authenticate()
+        response = self.client.patch(
+            f"/jobs/job/{self.job.uuid}/result/task/{self.task_pending.uuid}/reject/",
+            data={"reject_reason": "Views do not match the screenshot"},
+            format="json",
+        )
+        assert response.status_code == 200
+        self.task_pending.refresh_from_db()
+        assert self.task_pending.result_status == 3
+        assert not self.task_pending.result_locked  # influencer can resubmit
+
+    def test_admin_listing_includes_members_with_approved_results(self):
+        self.submit_result()
+        self.authenticate()
+        data = self.client.get(f"/jobs/job/{self.job.uuid}/result/pending/").json()
+        row = next(r for r in data if r["member_uuid"] == str(self.member.uuid))
+        assert row["approved_count"] == 1
+        assert row["review_count"] == 0
