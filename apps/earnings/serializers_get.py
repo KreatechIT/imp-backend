@@ -1,10 +1,12 @@
 from rest_framework import serializers
 
 from apps.earnings import models
+from apps.members.serializers_get import BankDetailSerializer
 
 
 class PayoutSerializer(serializers.ModelSerializer):
     member = serializers.CharField(source="member.display_name")
+    member_username = serializers.CharField(source="member.user.username")
     member_uuid = serializers.UUIDField(source="member.uuid")
     status = serializers.IntegerField()
 
@@ -13,6 +15,7 @@ class PayoutSerializer(serializers.ModelSerializer):
         fields = [
             "uuid",
             "member",
+            "member_username",
             "member_uuid",
             "period_key",
             "amount",
@@ -112,6 +115,7 @@ class EarningsKpiSerializer(serializers.Serializer):
 
 class JobPayoutSerializer(serializers.ModelSerializer):
     member = serializers.SerializerMethodField()
+    member_username = serializers.CharField(source="member_job.member.user.username")
     member_uuid = serializers.UUIDField(source="member_job.member.uuid")
     member_job_uuid = serializers.UUIDField(source="member_job.uuid")
     org = serializers.CharField(source="member_job.job.company.name")
@@ -133,6 +137,7 @@ class JobPayoutSerializer(serializers.ModelSerializer):
         fields = [
             "uuid",
             "member",
+            "member_username",
             "member_uuid",
             "member_job_uuid",
             "org",
@@ -146,6 +151,24 @@ class JobPayoutSerializer(serializers.ModelSerializer):
             "paid_at",
             "created",
         ]
+
+
+class AdminJobPayoutSerializer(JobPayoutSerializer):
+    """Adds the influencer's bank account so the admin can transfer the payout."""
+
+    bank_detail = serializers.SerializerMethodField()
+
+    def get_bank_detail(self, obj):
+        member = obj.member_job.member
+        # The list prefetches active accounts, primary first (see JobPayoutViewSet).
+        accounts = getattr(member, "active_bank_details", None)
+        if accounts is None:
+            accounts = member.bank_details.filter(archived=None).order_by("-is_primary", "-created")[:1]
+        account = next(iter(accounts), None)
+        return BankDetailSerializer(account).data if account else None
+
+    class Meta(JobPayoutSerializer.Meta):
+        fields = JobPayoutSerializer.Meta.fields + ["bank_detail"]
 
 
 class PayoutJobSerializer(serializers.Serializer):

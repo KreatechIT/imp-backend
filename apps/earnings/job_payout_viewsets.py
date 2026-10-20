@@ -1,4 +1,5 @@
 from django.db import IntegrityError, transaction
+from django.db.models import Prefetch
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.serializers import ValidationError
@@ -6,7 +7,7 @@ from rest_framework.viewsets import GenericViewSet, ReadOnlyModelViewSet
 
 from apps.earnings import helper_functions, models, serializers_create, serializers_get
 from apps.jobs.models import MemberJob
-from apps.members.models import Member
+from apps.members.models import BankDetail, Member
 from apps.notifications import helper_functions as notifications
 from base import responses
 from core import permissions
@@ -14,7 +15,7 @@ from core.pagination import StandardPagination
 
 
 class JobPayoutViewSet(ReadOnlyModelViewSet):
-    serializer_class = serializers_get.JobPayoutSerializer
+    serializer_class = serializers_get.AdminJobPayoutSerializer
     permission_classes = [permissions.IsAdmin]
     pagination_class = StandardPagination
     lookup_field = "uuid"
@@ -25,6 +26,12 @@ class JobPayoutViewSet(ReadOnlyModelViewSet):
             "member_job__member__user",
             "member_job__job__company",
             "reviewed_by__user",
+        ).prefetch_related(
+            Prefetch(
+                "member_job__member__bank_details",
+                queryset=BankDetail.objects.filter(archived=None).order_by("-is_primary", "-created"),
+                to_attr="active_bank_details",
+            )
         )
         params = self.request.query_params
         if params.get("status"):
