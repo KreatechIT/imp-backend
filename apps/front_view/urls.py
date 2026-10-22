@@ -7,6 +7,7 @@ urlpatterns = [
     path("leaderboard/", views.LeaderboardView.as_view(), name="leaderboard"),
     path("leaderboard/me/", views.MyLeaderboardRankView.as_view(), name="leaderboard-me"),
     path("influencer/leaderboard/", views.InfluencerLeaderboardView.as_view(), name="influencer-leaderboard"),
+    path("influencer/report/", views.InfluencerReportView.as_view(), name="influencer-report"),
     path("influencer/rank/<str:phone_number>/", views.InfluencerRankView.as_view(), name="influencer-rank"),
     path("", include(routers.front_view_router.urls)),
 ]

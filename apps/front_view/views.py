@@ -1,4 +1,7 @@
+from datetime import date
 from decimal import Decimal
+
+import requests
 
 from rest_framework.generics import GenericAPIView
 from rest_framework.views import APIView
@@ -157,3 +160,59 @@ class InfluencerRankView(APIView):
             ).get_response()
 
         return responses.SuccessResponse(data=data).get_response()
+
+
+class InfluencerReportView(APIView):
+    """Admin report from the MRS imp-report API: registers, bonus claims,
+    deposits, withdrawals and win/lose per influencer for a date range
+    (?from_date=&to_date=, YYYY-MM-DD, default the current month)."""
+
+    permission_classes = [permissions.IsAdmin]
+
+    def get(self, request, *args, **kwargs):
+        from_date = request.query_params.get("from_date") or None
+        to_date = request.query_params.get("to_date") or None
+        try:
+            start = date.fromisoformat(from_date) if from_date else None
+            end = date.fromisoformat(to_date) if to_date else None
+        except ValueError:
+            return responses.BadRequestError(
+                details="Use YYYY-MM-DD for from_date and to_date",
+            ).get_response()
+        if start and end and start > end:
+            return responses.BadRequestError(
+                details="from_date must not be after to_date",
+            ).get_response()
+
+        phones = influencer_sync.influencer_phones()
+        if not phones:
+            return responses.SuccessResponse(
+                data={"results": [], "not_found": []},
+            ).get_response()
+
+        try:
+            payload = influencer_sync.fetch_report(phones, from_date, to_date)
+        except (requests.RequestException, ValueError):
+            return responses.ThirdPartyError(
+                error_message="Unable to load the report from MRS",
+            ).get_response()
+
+        members = {
+            m.phone_number: m
+            for m in Member.objects.filter(
+                archived=None, phone_number__in=phones,
+            ).select_related("user")
+        }
+        results = []
+        for row in payload.get("results", []):
+            member = members.get(row.get("phone_number"))
+            results.append({
+                **row,
+                "username": member.user.username if member else "",
+                "full_name": (member.full_name if member else "") or "",
+            })
+        results.sort(key=lambda r: Decimal(str(r.get("total_deposit") or "0")), reverse=True)
+
+        return responses.SuccessResponse(
+            data={"results": results, "not_found": payload.get("not_found", [])},
+        ).get_response()

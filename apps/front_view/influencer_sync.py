@@ -30,6 +30,27 @@ def fetch_from_third_party(phones):
     return response.json()
 
 
+def fetch_report(phones, from_date=None, to_date=None):
+    """MRS per-influencer report. Dates are optional ISO strings; MRS
+    defaults to the current month when they are left out."""
+    body = {
+        "access_code": settings.INFLUENCER_API_ACCESS_CODE,
+        "phone_numbers": phones,
+    }
+    if from_date:
+        body["from_date"] = from_date
+    if to_date:
+        body["to_date"] = to_date
+
+    response = requests.post(
+        f"{settings.INFLUENCER_API_BASE_URL}/third-party/imp-report/",
+        json=body,
+        timeout=choices.INFLUENCER_SYNC_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 def run_sync(slot, attempt):
     """Pull the ranking and store it as a new run. Earlier runs are kept.
     Returns the number of rows stored."""
