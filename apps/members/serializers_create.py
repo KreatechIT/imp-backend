@@ -44,6 +44,7 @@ class MemberSerializer(serializers.Serializer):
 
 
 class EditMemberSerializer(serializers.Serializer):
+    username = serializers.CharField(required=False, max_length=128)
     full_name = serializers.CharField(required=False)
     phone_number = serializers.CharField(
         required=False, allow_null=True, allow_blank=True, max_length=20,

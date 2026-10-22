@@ -22,10 +22,14 @@ class MemberViewSet(ReadOnlyModelViewSet):
     def get_queryset(self):
         queryset = (
             models.Member.objects
-            .filter(archived=None)
             .select_related("user")
             .order_by("-created")
         )
+        if self.action == "list":
+            if self.request.query_params.get("archived") == "true":
+                queryset = queryset.exclude(archived=None)
+            else:
+                queryset = queryset.filter(archived=None)
 
         search = self.request.query_params.get("search")
         username = self.request.query_params.get("username")
@@ -103,13 +107,34 @@ class MemberViewSet(ReadOnlyModelViewSet):
                 item_key=self.item_key, item_id=uuid,
             ).get_response()
 
-        if member.is_archived:
-            return responses.ItemAlreadyArchivedError(
-                item_key=self.item_key, item_id=uuid,
+        username = validated_data.pop("username", None)
+        phone_number = validated_data.get("phone_number")
+        email = validated_data.get("email")
+
+        if username and username != member.user.username:
+            if UserModel.objects.filter(username=username).exclude(pk=member.user_id).exists():
+                return responses.ExistingDataError(
+                    item_key="Username", item_id=username,
+                ).get_response()
+        else:
+            username = None
+        if phone_number and models.Member.objects.filter(
+            phone_number=phone_number,
+        ).exclude(pk=member.pk).exists():
+            return responses.ExistingDataError(
+                item_key="Phone number", item_id=phone_number,
+            ).get_response()
+        if email and models.Member.objects.filter(
+            email=email,
+        ).exclude(pk=member.pk).exists():
+            return responses.ExistingDataError(
+                item_key="Email", item_id=email,
             ).get_response()
 
         try:
             with transaction.atomic():
+                if username:
+                    member.user.update(username=username)
                 member.update(**validated_data)
         except IntegrityError:
             return responses.ExistingDataError(
@@ -163,6 +188,27 @@ class MemberViewSet(ReadOnlyModelViewSet):
 
         member.archive()
         member.user.archive()
+
+        data = serializers_get.MemberSerializer(member, context={"request": self.request}).data
+        return responses.SuccessResponse(data=data).get_response()
+
+    @action(detail=True, methods=["patch"])
+    def unarchive(self, request, uuid=None, *args, **kwargs):
+        try:
+            member = models.Member.objects.select_related("user").get(uuid=uuid)
+        except models.Member.DoesNotExist:
+            return responses.MissingItemError(
+                item_key=self.item_key, item_id=uuid,
+            ).get_response()
+
+        if not member.is_archived:
+            return responses.BadRequestError(
+                error_message="Member is not archived",
+            ).get_response()
+
+        with transaction.atomic():
+            member.update(archived=None)
+            member.user.update(archived=None)
 
         data = serializers_get.MemberSerializer(member, context={"request": self.request}).data
         return responses.SuccessResponse(data=data).get_response()

@@ -165,16 +165,14 @@ def period_results(member_job, from_date, to_date, approved_periods=None):
     posted = 0
     joined = member_start_date(member_job)
     for period_key, period_start, period_end in iter_periods(job, from_date, to_date, joined):
-        if period_end >= today:
-            continue
-        if len(approved_periods.get(period_key, ())) < required:
+        if len(approved_periods.get(period_key, ())) >= required:
+            posted += 1
+        elif period_end < today:
             missed.append({
                 "period_key": period_key,
                 "period_start": period_start,
                 "period_end": period_end,
             })
-        else:
-            posted += 1
     return missed, posted
 
 

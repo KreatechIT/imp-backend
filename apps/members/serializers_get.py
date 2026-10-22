@@ -80,6 +80,7 @@ class MemberSerializer(serializers.ModelSerializer):
             "joined",
             "last_login",
             "created",
+            "archived",
         ]
 
 
