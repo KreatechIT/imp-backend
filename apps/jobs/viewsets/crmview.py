@@ -788,6 +788,7 @@ class ResultViewSet(ReadOnlyModelViewSet):
                 filter=Q(
                     tasks__submitted_at__isnull=False,
                     tasks__metrics_submitted_at__isnull=True,
+                    tasks__requirement__content_type=2,  # only stories report a result
                 ),
                 distinct=True,
             ),
@@ -838,6 +839,8 @@ class ResultViewSet(ReadOnlyModelViewSet):
 
         rows = []
         for day_number, task in enumerate(tasks, start=1):
+            if task.requirement.content_type != 2:  # only stories report a result
+                continue
             row = {
                 "uuid": str(task.uuid),
                 "day_number": day_number,

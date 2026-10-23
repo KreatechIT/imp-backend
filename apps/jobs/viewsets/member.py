@@ -48,6 +48,7 @@ class MemberJobViewSet(ReadOnlyModelViewSet):
                 filter=Q(
                     tasks__submitted_at__isnull=False,
                     tasks__metrics_submitted_at__isnull=True,
+                    tasks__requirement__content_type=2,  # only stories report a result
                 ),
                 distinct=True,
             ),
@@ -73,6 +74,8 @@ class MemberJobViewSet(ReadOnlyModelViewSet):
         pending_rows = []
         for day_number, task in enumerate(submitted_tasks, start=1):
             if task.has_result:
+                continue
+            if task.requirement.content_type != 2:  # only stories report a result
                 continue
             row = serializers_get.PendingResultsTaskSerializer(
                 task, context={"request": self.request},
@@ -350,6 +353,11 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
                 item_key=self.item_key, item_id=uuid,
             ).get_response()
 
+        if task.requirement.content_type != 2:  # only stories report a result
+            return responses.BadRequestError(
+                details="Only stories report a result"
+            ).get_response()
+
         if not task.is_submitted:
             return responses.BadRequestError(
                 details="Submit the task before reporting its result"
@@ -364,6 +372,7 @@ class MemberTaskViewSet(ReadOnlyModelViewSet):
 
         still_pending = task.member_job.tasks.filter(
             submitted_at__isnull=False, metrics_submitted_at__isnull=True,
+            requirement__content_type=2,  # only stories report a result
         ).exists()
         if not still_pending:
             notifications.notify(

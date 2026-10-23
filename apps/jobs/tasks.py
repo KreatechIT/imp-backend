@@ -14,6 +14,7 @@ def send_pending_result_reminders():
             filter=Q(
                 tasks__submitted_at__isnull=False,
                 tasks__metrics_submitted_at__isnull=True,
+                tasks__requirement__content_type=2,  # only stories report a result
             ),
             distinct=True,
         ),
