@@ -124,3 +124,89 @@ VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".m4v", ".webm"}
 def media_type_for(filename):
     ext = os.path.splitext(filename or "")[1].lower()
     return 1 if ext in VIDEO_EXTENSIONS else 2
+
+
+def _job_periods(job, last_day):
+    """Every period of the job from its start up to last_day, numbered from 1."""
+    day = timezone.localtime(job.start_date).date()
+    periods = []
+    while day <= last_day:
+        period_key, start, end = resolve_period(job, day)
+        periods.append((len(periods) + 1, period_key, start, end))
+        day = end + timedelta(days=1)
+    return periods
+
+
+def member_job_days(member_job, request):
+    """A member's job laid out period by period: each period's tasks and, next
+    to them, the result of its story (the only content type that reports one).
+    Used by the member's results page and the admin review popup."""
+    job = member_job.job
+    today = timezone.localdate()
+    last_day = today
+    if job.end_date:
+        last_day = min(last_day, timezone.localtime(job.end_date).date())
+    joined = member_start_date(member_job)
+
+    requirements = list(
+        job.requirements.filter(archived=None).order_by("content_type", "platform")
+    )
+    tasks_by_period = {}
+    for task in member_job.tasks.select_related("requirement"):
+        tasks_by_period.setdefault(task.period_key, {})[task.requirement_id] = task
+
+    def file_url(field):
+        return request.build_absolute_uri(field.url) if field else None
+
+    days = []
+    for number, period_key, start, end in _job_periods(job, last_day):
+        if end < joined:
+            continue
+        existing = tasks_by_period.get(period_key, {})
+        is_over = end < today
+
+        rows = []
+        story_task = None
+        for requirement in requirements:
+            task = existing.get(requirement.id)
+            if requirement.content_type == 2:
+                story_task = task
+            rows.append({
+                "uuid": task.uuid if task else None,
+                "platform": requirement.platform,
+                "content_type": requirement.content_type,
+                "quantity": requirement.quantity,
+                "status": task.status if task else (5 if is_over else 1),
+                "submitted_at": task.submitted_at if task else None,
+                "proof_link": task.proof_link if task else None,
+                "proof_file": file_url(task.proof_file) if task else None,
+                "reject_reason": task.reject_reason if task else None,
+            })
+
+        has_story = any(requirement.content_type == 2 for requirement in requirements)
+        result = None
+        if has_story:
+            result = {
+                "task_uuid": story_task.uuid if story_task else None,
+                "can_submit": bool(
+                    story_task and story_task.is_submitted and not story_task.result_locked
+                ),
+                "has_result": bool(story_task and story_task.has_result),
+                "metrics_views": story_task.metrics_views if story_task else None,
+                "metrics_screenshot": file_url(story_task.metrics_screenshot) if story_task else None,
+                "metrics_submitted_at": story_task.metrics_submitted_at if story_task else None,
+                "result_status": story_task.result_status if story_task else None,
+                "result_reject_reason": story_task.result_reject_reason if story_task else None,
+                "result_auto_approved": bool(story_task and story_task.is_result_auto_approved),
+            }
+
+        days.append({
+            "number": number,
+            "period_key": period_key,
+            "period_start": start,
+            "period_end": end,
+            "is_today": start <= today <= end,
+            "tasks": rows,
+            "result": result,
+        })
+    return days

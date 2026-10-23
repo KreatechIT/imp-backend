@@ -7,7 +7,7 @@ from rest_framework.serializers import ValidationError
 from rest_framework.viewsets import ReadOnlyModelViewSet
 
 from apps.earnings import helper_functions as earnings_helpers
-from apps.jobs import models, serializers_create, serializers_get
+from apps.jobs import helper_functions, models, serializers_create, serializers_get
 from apps.notifications import helper_functions as notifications
 from base import responses
 from core import permissions
@@ -864,6 +864,25 @@ class ResultViewSet(ReadOnlyModelViewSet):
             rows.append(row)
 
         return responses.SuccessResponse(data={"tasks": rows}).get_response()
+
+    @action(
+        detail=False, methods=["get"],
+        url_path=r"member/(?P<member_uuid>[^/.]+)/days",
+    )
+    def member_days(self, request, member_uuid=None, *args, **kwargs):
+        member_job = self.base_queryset().filter(
+            member__uuid=member_uuid,
+        ).first()
+        if member_job is None:
+            return responses.MissingItemError(
+                item_key=self.item_key, item_id=member_uuid,
+            ).get_response()
+
+        data = {
+            "recurrence": member_job.job.recurrence,
+            "days": helper_functions.member_job_days(member_job, request),
+        }
+        return responses.SuccessResponse(data=data).get_response()
 
     def get_result_task(self, task_uuid):
         return (

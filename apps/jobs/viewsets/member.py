@@ -35,6 +35,9 @@ class MemberJobViewSet(ReadOnlyModelViewSet):
             .select_related("member__user", "job__company")
             .order_by("-created")
         )
+        # a member only ever sees their own jobs; admins see any member's
+        if not self.request.user.is_admin:
+            queryset = queryset.filter(member__user=self.request.user)
         status = self.request.query_params.get("status")
         if status:
             queryset = queryset.filter(status=status)
@@ -57,6 +60,25 @@ class MemberJobViewSet(ReadOnlyModelViewSet):
         data = serializers_get.PendingResultsJobSerializer(
             queryset, many=True, context={"request": self.request},
         ).data
+        return responses.SuccessResponse(data=data).get_response()
+
+    @action(detail=True, methods=["get"], url_path="days")
+    def days(self, request, uuid=None, *args, **kwargs):
+        member_job = self.get_queryset().filter(uuid=uuid).first()
+        if member_job is None:
+            return responses.MissingItemError(
+                item_key=self.item_key, item_id=uuid,
+            ).get_response()
+
+        days = helper_functions.member_job_days(member_job, request)
+        data = {
+            "uuid": member_job.uuid,
+            "org": member_job.job.company.name,
+            "job_title": member_job.job.title,
+            "job_status": member_job.status,
+            "recurrence": member_job.job.recurrence,
+            "days": days,
+        }
         return responses.SuccessResponse(data=data).get_response()
 
     @action(detail=True, methods=["get"], url_path="pending-results")
