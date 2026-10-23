@@ -837,13 +837,15 @@ class ResultViewSet(ReadOnlyModelViewSet):
             submitted_at__isnull=False,
         ).select_related("requirement").order_by("period_start")
 
+        job_start_date = member_job.job.start_date.date()
+
         rows = []
-        for day_number, task in enumerate(tasks, start=1):
+        for task in tasks:
             if task.requirement.content_type != 2:  # only stories report a result
                 continue
             row = {
                 "uuid": str(task.uuid),
-                "day_number": day_number,
+                "day_number": (task.period_start - job_start_date).days + 1,
                 "platform": task.requirement.platform,
                 "content_type": task.requirement.content_type,
                 "has_result": task.has_result,

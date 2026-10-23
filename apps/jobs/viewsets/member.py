@@ -71,8 +71,10 @@ class MemberJobViewSet(ReadOnlyModelViewSet):
             submitted_at__isnull=False,
         ).select_related("requirement").order_by("period_start")
 
+        job_start_date = member_job.job.start_date.date()
+
         pending_rows = []
-        for day_number, task in enumerate(submitted_tasks, start=1):
+        for task in submitted_tasks:
             if task.has_result:
                 continue
             if task.requirement.content_type != 2:  # only stories report a result
@@ -80,7 +82,7 @@ class MemberJobViewSet(ReadOnlyModelViewSet):
             row = serializers_get.PendingResultsTaskSerializer(
                 task, context={"request": self.request},
             ).data
-            row["day_number"] = day_number
+            row["day_number"] = (task.period_start - job_start_date).days + 1
             pending_rows.append(row)
 
         data = {
