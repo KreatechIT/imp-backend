@@ -79,9 +79,30 @@ class MemberPendingResultsAPITest(BaseAPITestCase):
         assert tasks[0]["uuid"] == str(self.task_pending.uuid)
         assert tasks[0]["content_type"] == 2
         assert tasks[0]["platform"] == 1
-        assert tasks[0]["day_number"] == 2
+        # job started 10 days ago, this task is for 2 days ago -> day 9
+        assert tasks[0]["day_number"] == 9
         assert "has_result" not in tasks[0]
         assert "period_start" not in tasks[0]
+
+    def test_first_day_is_day_one_when_job_starts_at_local_midnight(self):
+        # Stored as 16:00 UTC the day before, so the UTC date is one day early.
+        today = timezone.localdate()
+        midnight = timezone.make_aware(
+            timezone.datetime(today.year, today.month, today.day) - timedelta(days=3),
+        )
+        self.job.update(start_date=midnight)
+        first_day = timezone.localtime(midnight).date()
+        task = models.MemberTask.objects.create(
+            member_job=self.member_job, requirement=self.requirement,
+            period_key="first", period_start=first_day, period_end=first_day,
+            submitted_at=timezone.now(), proof_link="https://instagram.com/p/9",
+        )
+        self.authenticate(self.member.user)
+        response = self.client.get(
+            f"/members/{self.member.uuid}/jobs/{self.member_job.uuid}/pending-results/"
+        )
+        row = next(t for t in response.json()["tasks"] if t["uuid"] == str(task.uuid))
+        assert row["day_number"] == 1
 
     def test_submitting_result_removes_it_from_pending(self):
         self.authenticate(self.member.user)
@@ -204,7 +225,7 @@ class AdminResultAPITest(BaseAPITestCase):
             start_date=timezone.now() - timedelta(days=10),
         )
         self.requirement = models.JobRequirement.objects.create(
-            job=self.job, platform=2, content_type=1, quantity=1,
+            job=self.job, platform=2, content_type=2, quantity=1,
         )
         self.member_job = models.MemberJob.objects.create(
             member=self.member, job=self.job,

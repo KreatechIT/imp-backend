@@ -837,7 +837,7 @@ class ResultViewSet(ReadOnlyModelViewSet):
             submitted_at__isnull=False,
         ).select_related("requirement").order_by("period_start")
 
-        job_start_date = member_job.job.start_date.date()
+        job_start_date = timezone.localtime(member_job.job.start_date).date()
 
         rows = []
         for task in tasks:
